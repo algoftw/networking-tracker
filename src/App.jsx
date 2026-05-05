@@ -112,6 +112,7 @@ export default function NetworkingTracker() {
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [toast, setToast] = useState(null);
   const formRef = useRef(null);
+  const importInputRef = useRef(null);
   const [resumeFile, setResumeFile] = useState(null);
   const [resumeName, setResumeName] = useState("");
   const [resumeDate, setResumeDate] = useState("");
@@ -186,6 +187,51 @@ export default function NetworkingTracker() {
       showToast("Resume uploaded!");
     };
     reader.readAsDataURL(file);
+  };
+
+  const importFromExcel = (file) => {
+    if (!file) return;
+    import("xlsx").then((XLSX) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const wb = XLSX.read(e.target.result, { type: "array" });
+          const ws = wb.Sheets[wb.SheetNames[0]];
+          const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
+          if (rows.length === 0) { showToast("No data found in file."); return; }
+          const colMap = {
+            "first name": "firstName", "last name": "lastName",
+            "profession": "profession", "email": "email",
+            "company": "company", "linkedin": "linkedin",
+            "phone": "phone", "last contacted": "lastContacted",
+            "responded": "responded", "status": "status", "notes": "notes",
+          };
+          const imported = rows.map((row) => {
+            const contact = { ...emptyContact, id: uid() };
+            Object.entries(row).forEach(([col, val]) => {
+              const key = colMap[col.toLowerCase().trim()];
+              if (!key) return;
+              if (key === "responded") contact[key] = String(val).toLowerCase() === "yes" || val === true;
+              else if (key === "lastContacted" && val) {
+                const parsed = new Date(val);
+                contact[key] = isNaN(parsed) ? "" : parsed.toISOString().slice(0, 10);
+              } else if (key === "status" && STATUS_OPTIONS.includes(val)) contact[key] = val;
+              else contact[key] = String(val);
+            });
+            return contact;
+          }).filter(c => c.firstName.trim() || c.lastName.trim());
+          if (imported.length === 0) { showToast("No valid contacts found."); return; }
+          setContacts(prev => {
+            const existingEmails = new Set(prev.map(c => c.email?.toLowerCase()).filter(Boolean));
+            const newOnes = imported.filter(c => !c.email || !existingEmails.has(c.email.toLowerCase()));
+            showToast(`Imported ${newOnes.length} new contact${newOnes.length !== 1 ? "s" : ""}.`);
+            return [...prev, ...newOnes];
+          });
+        } catch { showToast("Failed to read file."); }
+      };
+      reader.readAsArrayBuffer(file);
+    }).catch(() => showToast("Import failed — run: npm install xlsx"));
+    importInputRef.current.value = "";
   };
 
   const exportToExcel = () => {
@@ -284,6 +330,8 @@ export default function NetworkingTracker() {
             </div>
             <button style={{ fontFamily: sans, fontSize: 13, fontWeight: 600, padding: "10px 22px", borderRadius: 10, border: "none", background: P.forest, color: P.white, cursor: "pointer", display: "flex", alignItems: "center", transition: "all 0.2s" }} onClick={openAdd}><span style={{ fontSize: 18, marginRight: 6 }}>+</span> Add Contact</button>
             <button style={{ fontFamily: sans, fontSize: 12, padding: "10px 16px", borderRadius: 10, border: `1px solid ${P.border}`, background: P.white, color: P.textMd, cursor: "pointer" }} onClick={exportToExcel}>↓ Export</button>
+            <input ref={importInputRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: "none" }} onChange={(e) => { const file = e.target.files?.[0]; if (file) importFromExcel(file); }} />
+            <button style={{ fontFamily: sans, fontSize: 12, padding: "10px 16px", borderRadius: 10, border: `1px solid ${P.border}`, background: P.white, color: P.textMd, cursor: "pointer" }} onClick={() => importInputRef.current?.click()}>↑ Import</button>
           </div>
 
           {filtered.length === 0 ? (
