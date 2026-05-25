@@ -142,7 +142,7 @@ export default function NetworkingTracker() {
 
   const openGmailDraft = (contact) => {
     const body = generateEmailTemplate(contact);
-    const subject = "Coffee Chat Request - From a Current UTD Student";
+    const subject = `UT Dallas Senior - Interested in ${contact.company || "[Company Name]"} IB`;
     const to = contact.email || "";
     const url = `https://mail.google.com/mail/u/2/?view=cm&to=${encodeURIComponent(to)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     window.open(url, "_blank");
