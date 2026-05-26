@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 
 const STORAGE_KEY = "finance-contacts";
 
-const emptyContact = { id: "", firstName: "", lastName: "", profession: "", email: "", company: "", linkedin: "", phone: "", status: "Contacted", notes: "", lastContacted: "", responded: false };
+const emptyContact = { id: "", firstName: "", lastName: "", profession: "investment banking analyst", email: "", company: "", linkedin: "", phone: "", location: "", status: "Contacted", notes: "", lastContacted: "", responded: false };
 
 function daysSince(dateStr) { if (!dateStr) return null; const d = new Date(dateStr); if (isNaN(d)) return null; return Math.floor((new Date() - d) / 864e5); }
 function formatDaysAgo(days) { if (days === null) return null; if (days === 0) return "Today"; if (days === 1) return "1 day ago"; if (days < 30) return `${days}d ago`; if (days < 365) return `${Math.floor(days / 30)}mo ${days % 30}d ago`; return `${Math.floor(days / 365)}y ${Math.floor((days % 365) / 30)}mo ago`; }
@@ -137,7 +137,7 @@ export default function NetworkingTracker() {
   const openAdd = () => { setEditing(null); setForm({ ...emptyContact, id: uid() }); setShowForm(true); setTimeout(() => formRef.current?.scrollIntoView({ behavior: "smooth" }), 100); };
   const openEdit = (c) => { setEditing(c.id); setForm({ ...emptyContact, ...c, responded: c.responded === true }); setShowForm(true); setTimeout(() => formRef.current?.scrollIntoView({ behavior: "smooth" }), 100); };
   const generateEmailTemplate = (contact) => {
-    return `Hi ${contact.firstName},\n\nI hope you are doing well. My name is Rohit Modi. I am a Senior at The University of Texas at Dallas (fall 2026), pursuing a B.S. in Finance and Accounting. I am interested in learning more about an ${contact.profession || "[contact role]"} role at ${contact.company || "[Company Name]"} in (City the Analyst Works). I would love to hear about your time in the (Specific Group of Analyst).\n\nIf your time permits, would you be willing to call and talk about your experience within the role? I appreciate any time and advice you have to offer.\n\nAttached is my resume for reference.`;
+    return `Hi ${contact.firstName},\n\nI hope you are doing well. My name is Rohit Modi. I am a Senior at The University of Texas at Dallas (fall 2026), pursuing a B.S. in Finance and Accounting. I am interested in learning more about an ${contact.profession || "[contact role]"} role at ${contact.company || "[Company Name]"} in ${contact.location || "(City the Analyst Works)"}. I would love to hear about your time in the (Specific Group of Analyst).\n\nIf your time permits, would you be willing to call and talk about your experience within the role? I appreciate any time and advice you have to offer.\n\nAttached is my resume for reference.`;
   };
 
   const openGmailDraft = (contact) => {
@@ -149,7 +149,7 @@ export default function NetworkingTracker() {
   };
 
   const copyLinkedInMessage = (contact) => {
-    const msg = `Hi ${contact.firstName},\n\nI'm a current senior at UT Dallas (fall '26), interested in learning more about ${contact.profession || "[contact role]"} at ${contact.company || "[Company]"} in (city analyst lives in). I would love to hear about your time in the (group of analyst) Group.\n\nWould you be open to a brief call? I appreciate any time and advice you have to offer.`;
+    const msg = `Hi ${contact.firstName},\n\nI'm a current senior at UT Dallas (fall '26), interested in learning more about ${contact.profession || "[contact role]"} at ${contact.company || "[Company]"} in ${contact.location || "(city analyst lives in)"}. I would love to hear about your time in the (group of analyst) Group.\n\nWould you be open to a brief call? I appreciate any time and advice you have to offer.`;
     navigator.clipboard.writeText(msg).then(() => {
       setCopiedId(contact.id);
       showToast("LinkedIn message copied!");
@@ -161,7 +161,7 @@ export default function NetworkingTracker() {
     try {
       if (!form.firstName.trim() || !form.lastName.trim()) { showToast("First and last name are required."); return; }
       const safeForm = { ...emptyContact, ...form };
-      if (editing) { setContacts((p) => p.map((c) => (c.id === editing ? { ...safeForm } : c))); showToast("Contact updated."); }
+      if (editing) { setContacts((p) => [...p.filter((c) => c.id !== editing), { ...safeForm }]); showToast("Contact updated."); }
       else { setContacts((p) => [...p, { ...safeForm }]); showToast("Contact added."); }
       setShowForm(false); setEditing(null); setForm({ ...emptyContact });
     } catch (err) { console.error("Save error:", err); showToast("Error saving contact."); }
@@ -611,8 +611,24 @@ export default function NetworkingTracker() {
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 20 }} onClick={() => setShowForm(false)}>
           <div ref={formRef} style={{ background: "#bc9e82", border: `1px solid ${P.border}`, borderRadius: 18, padding: "32px 28px", maxWidth: 600, width: "100%", animation: "fadeIn 0.3s ease", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.12)" }} onClick={(e) => e.stopPropagation()}>
             <h2 style={{ fontFamily: serif, fontSize: 22, fontWeight: 400, color: P.forest, margin: "0 0 24px" }}>{editing ? "Edit Contact" : "New Contact"}</h2>
+            {(() => {
+              const isDuplicateName = !editing && form.firstName.trim() && form.lastName.trim() &&
+                contacts.some(c => c.firstName.trim().toLowerCase() === form.firstName.trim().toLowerCase() && c.lastName.trim().toLowerCase() === form.lastName.trim().toLowerCase());
+              return (
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px 14px" }}>
-              {[["firstName","First Name *","text","Jane"],["lastName","Last Name *","text","Doe"],["profession","Profession","text","Investment Analyst"],["email","Email","email","jane.doe@firm.com"],["company","Company","text","Goldman Sachs"],["linkedin","LinkedIn URL","url","linkedin.com/in/janedoe"],["phone","Phone (optional)","tel","(555) 123-4567"]].map(([k,l,t,p]) => (
+              {[["firstName","First Name *","text","Jane"],["lastName","Last Name *","text","Doe"]].map(([k,l,t,p]) => (
+                <label key={k} style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                  <span style={{ fontFamily: sans, fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase", color: P.textMd }}>{l}</span>
+                  <input type={t} style={{ fontFamily: sans, fontSize: 13, padding: "10px 12px", borderRadius: 10, border: `1px solid ${isDuplicateName ? P.danger : P.border}`, background: P.bg, color: P.text, outline: "none", width: "100%" }} placeholder={p} value={form[k]} onChange={(e) => setForm((f) => ({ ...f, [k]: e.target.value }))} />
+                </label>
+              ))}
+              {isDuplicateName && (
+                <div style={{ gridColumn: "1 / -1", display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", borderRadius: 10, background: "#fef2f2", border: `1px solid ${P.danger}` }}>
+                  <span style={{ fontSize: 16 }}>⚠️</span>
+                  <span style={{ fontFamily: sans, fontSize: 12, fontWeight: 600, color: P.danger }}>A contact with this name already exists — double-check you haven't already emailed this person.</span>
+                </div>
+              )}
+              {[["profession","Profession","text","Investment Banking Analyst"],["email","Email","email","jane.doe@firm.com"],["company","Company","text","Goldman Sachs"],["location","Location","text","New York, NY"],["linkedin","LinkedIn URL","url","linkedin.com/in/janedoe"],["phone","Phone (optional)","tel","(555) 123-4567"]].map(([k,l,t,p]) => (
                 <label key={k} style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                   <span style={{ fontFamily: sans, fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase", color: P.textMd }}>{l}</span>
                   <input type={t} style={{ fontFamily: sans, fontSize: 13, padding: "10px 12px", borderRadius: 10, border: `1px solid ${P.border}`, background: P.bg, color: P.text, outline: "none", width: "100%" }} placeholder={p} value={form[k]} onChange={(e) => setForm((f) => ({ ...f, [k]: e.target.value }))} />
@@ -635,6 +651,8 @@ export default function NetworkingTracker() {
               </label>
               <label style={{ display: "flex", flexDirection: "column", gap: 5, gridColumn: "1 / -1" }}><span style={{ fontFamily: sans, fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase", color: P.textMd }}>Notes</span><textarea style={{ fontFamily: sans, fontSize: 13, padding: "10px 12px", borderRadius: 10, border: `1px solid ${P.border}`, background: P.bg, color: P.text, outline: "none", width: "100%", minHeight: 60, resize: "vertical" }} placeholder="Met at JPM conference, interested in PE roles…" value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} /></label>
             </div>
+          );
+        })()}
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 24 }}>
               <button style={{ fontFamily: sans, fontSize: 13, padding: "10px 18px", borderRadius: 10, border: `1px solid ${P.border}`, background: P.white, color: P.textMd, cursor: "pointer" }} onClick={() => setShowForm(false)}>Cancel</button>
               <button style={{ fontFamily: sans, fontSize: 13, fontWeight: 600, padding: "10px 22px", borderRadius: 10, border: "none", background: P.forest, color: P.white, cursor: "pointer" }} onClick={saveContact}>{editing ? "Update Contact" : "Save Contact"}</button>
