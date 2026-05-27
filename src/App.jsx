@@ -341,16 +341,16 @@ export default function NetworkingTracker() {
             </div>
           ) : (
             <div style={{ overflowX: "auto", borderRadius: 14, border: `1px solid ${P.border}`, background: P.white, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, tableLayout: "fixed" }}>
                 <thead><tr style={{ background: P.bg2 }}>
-                  {[["firstName","First Name"],["lastName","Last Name"],["profession","Profession"],["email","Email"],["company","Company"]].map(([f,l]) => (
-                    <th key={f} style={{ fontFamily: sans, fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase", color: P.textMd, padding: "14px 14px", textAlign: "left", borderBottom: `1px solid ${P.border}`, cursor: "pointer", userSelect: "none", whiteSpace: "nowrap" }} onClick={() => toggleSort(f)}>{l}<SortIcon field={f} /></th>
+                  {[["firstName","First Name","8%"],["lastName","Last Name","9%"],["profession","Profession","13%"],["email","Email","14%"],["company","Company","12%"]].map(([f,l,w]) => (
+                    <th key={f} style={{ fontFamily: sans, fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase", color: P.textMd, padding: "10px 8px", textAlign: "left", borderBottom: `1px solid ${P.border}`, cursor: "pointer", userSelect: "none", whiteSpace: "nowrap", width: w, overflow: "hidden" }} onClick={() => toggleSort(f)}>{l}<SortIcon field={f} /></th>
                   ))}
-                  <th style={{ fontFamily: sans, fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase", color: P.textMd, padding: "14px", textAlign: "left", borderBottom: `1px solid ${P.border}`, whiteSpace: "nowrap" }}>LinkedIn</th>
-                  <th style={{ fontFamily: sans, fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase", color: P.textMd, padding: "14px", textAlign: "left", borderBottom: `1px solid ${P.border}`, cursor: "pointer", whiteSpace: "nowrap" }} onClick={() => toggleSort("lastContacted")}>Last Contacted <SortIcon field="lastContacted" /></th>
-                  <th style={{ fontFamily: sans, fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase", color: P.textMd, padding: "14px", textAlign: "center", borderBottom: `1px solid ${P.border}`, whiteSpace: "nowrap" }}>Replied</th>
-                  <th style={{ fontFamily: sans, fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase", color: P.textMd, padding: "14px", textAlign: "left", borderBottom: `1px solid ${P.border}`, cursor: "pointer", whiteSpace: "nowrap" }} onClick={() => toggleSort("status")}>Status <SortIcon field="status" /></th>
-                  <th style={{ fontFamily: sans, fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase", color: P.textMd, padding: "14px", textAlign: "center", borderBottom: `1px solid ${P.border}`, whiteSpace: "nowrap" }}>Actions</th>
+                  <th style={{ fontFamily: sans, fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase", color: P.textMd, padding: "10px 8px", textAlign: "left", borderBottom: `1px solid ${P.border}`, whiteSpace: "nowrap", width: "7%" }}>LinkedIn</th>
+                  <th style={{ fontFamily: sans, fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase", color: P.textMd, padding: "10px 8px", textAlign: "left", borderBottom: `1px solid ${P.border}`, cursor: "pointer", whiteSpace: "nowrap", width: "10%" }} onClick={() => toggleSort("lastContacted")}>Last Contacted <SortIcon field="lastContacted" /></th>
+                  <th style={{ fontFamily: sans, fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase", color: P.textMd, padding: "10px 8px", textAlign: "center", borderBottom: `1px solid ${P.border}`, whiteSpace: "nowrap", width: "7%" }}>Replied</th>
+                  <th style={{ fontFamily: sans, fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase", color: P.textMd, padding: "10px 8px", textAlign: "left", borderBottom: `1px solid ${P.border}`, cursor: "pointer", whiteSpace: "nowrap", width: "9%" }} onClick={() => toggleSort("status")}>Status <SortIcon field="status" /></th>
+                  <th style={{ fontFamily: sans, fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase", color: P.textMd, padding: "10px 8px", textAlign: "center", borderBottom: `1px solid ${P.border}`, whiteSpace: "nowrap", width: "11%" }}>Actions</th>
                 </tr></thead>
                 <tbody>
                   {filtered.map((c, i) => {
@@ -360,7 +360,7 @@ export default function NetworkingTracker() {
                     const rowBg = isStale ? "rgba(220,38,38,0.08)" : i % 2 === 0 ? "#ffffff" : "#e2e2e2";
                     const staleBorder = isStale ? { borderLeft: `3px solid ${P.danger}` } : {};
                     const staleTxt = isStale ? { color: "#991b1b" } : {};
-                    const tdBase = { padding: "12px 14px", fontFamily: sans, fontSize: 13, color: P.text, whiteSpace: "nowrap", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis" };
+                    const tdBase = { padding: "10px 8px", fontFamily: sans, fontSize: 13, color: P.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" };
                     return (
                       <tr key={c.id} style={{ background: rowBg, borderBottom: `1px solid ${P.border}`, ...staleBorder, animation: "fadeIn 0.35s ease both", animationDelay: `${i * 25}ms`, transition: "background 0.15s" }}>
                         <td style={{ ...tdBase, ...staleTxt }}>{c.firstName}</td>
