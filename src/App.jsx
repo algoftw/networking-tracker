@@ -4,11 +4,13 @@ const STORAGE_KEY = "finance-contacts";
 
 const emptyContact = { id: "", firstName: "", lastName: "", profession: "investment banking analyst", email: "", company: "", linkedin: "", phone: "", location: "", status: "Contacted", notes: "", lastContacted: "", responded: false };
 
-function daysSince(dateStr) { if (!dateStr) return null; const d = new Date(dateStr); if (isNaN(d)) return null; return Math.floor((new Date() - d) / 864e5); }
+function getTodayCST() { const s = new Date().toLocaleDateString("en-CA", { timeZone: "America/Chicago" }); const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); }
+function daysSince(dateStr) { if (!dateStr) return null; const parts = dateStr.split("-").map(Number); if (parts.length < 3) return null; const d = new Date(parts[0], parts[1] - 1, parts[2]); if (isNaN(d)) return null; return Math.floor((getTodayCST() - d) / 864e5); }
 function formatDaysAgo(days) { if (days === null) return null; if (days === 0) return "Today"; if (days === 1) return "1 day ago"; if (days < 30) return `${days}d ago`; if (days < 365) return `${Math.floor(days / 30)}mo ${days % 30}d ago`; return `${Math.floor(days / 365)}y ${Math.floor((days % 365) / 30)}mo ago`; }
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
 
 const STATUS_OPTIONS = ["Contacted", "Followed Up", "Connected", "Spoke With", "No Response"];
+const LOCATION_PRESETS = ["New York", "Chicago", "San Francisco", "Dallas", "Houston"];
 const SC = {
   Contacted:      { bg: "#e0f2fe", text: "#0369a1", dot: "#0ea5e9", fill: "#0ea5e9" },
   "Followed Up":  { bg: "#fef3c7", text: "#92400e", dot: "#f59e0b", fill: "#f59e0b" },
@@ -119,6 +121,7 @@ export default function NetworkingTracker() {
   const resumeInputRef = useRef(null);
   const [showPreview, setShowPreview] = useState(false);
   const [copiedId, setCopiedId] = useState(null);
+  const [locationIsCustom, setLocationIsCustom] = useState(false);
 
   // Load resume metadata
   useEffect(() => {
@@ -134,8 +137,8 @@ export default function NetworkingTracker() {
   useEffect(() => { if (!loaded) return; (async () => { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(contacts)); } catch {} })(); }, [contacts, loaded]);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2400); };
-  const openAdd = () => { setEditing(null); setForm({ ...emptyContact, id: uid() }); setShowForm(true); setTimeout(() => formRef.current?.scrollIntoView({ behavior: "smooth" }), 100); };
-  const openEdit = (c) => { setEditing(c.id); setForm({ ...emptyContact, ...c, responded: c.responded === true }); setShowForm(true); setTimeout(() => formRef.current?.scrollIntoView({ behavior: "smooth" }), 100); };
+  const openAdd = () => { setEditing(null); setForm({ ...emptyContact, id: uid() }); setLocationIsCustom(false); setShowForm(true); setTimeout(() => formRef.current?.scrollIntoView({ behavior: "smooth" }), 100); };
+  const openEdit = (c) => { setEditing(c.id); setForm({ ...emptyContact, ...c, responded: c.responded === true }); setLocationIsCustom(!!c.location && !LOCATION_PRESETS.includes(c.location)); setShowForm(true); setTimeout(() => formRef.current?.scrollIntoView({ behavior: "smooth" }), 100); };
   const generateEmailTemplate = (contact) => {
     return `Hi ${contact.firstName},\n\nI hope you are doing well. My name is Rohit Modi. I am a Senior at The University of Texas at Dallas (fall 2026), pursuing a B.S. in Finance and Accounting. I am interested in learning more about an ${contact.profession || "[contact role]"} role at ${contact.company || "[Company Name]"} in ${contact.location || "(City the Analyst Works)"}. I would love to hear about your time in the (Specific Group of Analyst).\n\nIf your time permits, would you be willing to call and talk about your experience within the role? I appreciate any time and advice you have to offer.\n\nAttached is my resume for reference.`;
   };
@@ -176,7 +179,7 @@ export default function NetworkingTracker() {
     const reader = new FileReader();
     reader.onload = () => {
       const data = reader.result;
-      const now = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+      const now = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/Chicago" });
       setResumeFile(data);
       setResumeName(file.name);
       setResumeDate(now);
@@ -264,7 +267,7 @@ export default function NetworkingTracker() {
     const avgDays = (() => { const arr = contacts.map(c => daysSince(c.lastContacted)).filter(d => d !== null); return arr.length === 0 ? 0 : Math.round(arr.reduce((a, b) => a + b, 0) / arr.length); })();
     const companyMap = {}; contacts.forEach(c => { const co = c.company?.trim() || "Unknown"; if (!companyMap[co]) companyMap[co] = { total: 0, responded: 0 }; companyMap[co].total++; if (c.responded) companyMap[co].responded++; });
     const topCompanies = Object.entries(companyMap).sort((a, b) => b[1].total - a[1].total).slice(0, 8);
-    const monthMap = {}; const now = new Date(); for (let i = 5; i >= 0; i--) { const d = new Date(now.getFullYear(), now.getMonth() - i, 1); const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; monthMap[key] = { label: d.toLocaleDateString("en-US", { month: "short", year: "2-digit" }), outreach: 0, responses: 0 }; }
+    const monthMap = {}; const now = getTodayCST(); for (let i = 5; i >= 0; i--) { const d = new Date(now.getFullYear(), now.getMonth() - i, 1); const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; monthMap[key] = { label: d.toLocaleDateString("en-US", { month: "short", year: "2-digit" }), outreach: 0, responses: 0 }; }
     contacts.forEach(c => { if (c.lastContacted) { const key = c.lastContacted.slice(0, 7); if (monthMap[key]) { monthMap[key].outreach++; if (c.responded) monthMap[key].responses++; } } });
     return { total, reachedOut, responded, noResponse, responseRate, neverContacted, staleCount, avgDays, topCompanies, monthlyData: Object.values(monthMap) };
   }, [contacts]);
@@ -628,7 +631,24 @@ export default function NetworkingTracker() {
                   <span style={{ fontFamily: sans, fontSize: 12, fontWeight: 600, color: P.danger }}>A contact with this name already exists — double-check you haven't already emailed this person.</span>
                 </div>
               )}
-              {[["profession","Profession","text","Investment Banking Analyst"],["email","Email","email","jane.doe@firm.com"],["company","Company","text","Goldman Sachs"],["location","Location","text","New York, NY"],["linkedin","LinkedIn URL","url","linkedin.com/in/janedoe"],["phone","Phone (optional)","tel","(555) 123-4567"]].map(([k,l,t,p]) => (
+              {[["profession","Profession","text","Investment Banking Analyst"],["email","Email","email","jane.doe@firm.com"],["company","Company","text","Goldman Sachs"]].map(([k,l,t,p]) => (
+                <label key={k} style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                  <span style={{ fontFamily: sans, fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase", color: P.textMd }}>{l}</span>
+                  <input type={t} style={{ fontFamily: sans, fontSize: 13, padding: "10px 12px", borderRadius: 10, border: `1px solid ${P.border}`, background: P.bg, color: P.text, outline: "none", width: "100%" }} placeholder={p} value={form[k]} onChange={(e) => setForm((f) => ({ ...f, [k]: e.target.value }))} />
+                </label>
+              ))}
+              <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                <span style={{ fontFamily: sans, fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase", color: P.textMd }}>Location</span>
+                <select style={{ fontFamily: sans, fontSize: 13, padding: "10px 12px", borderRadius: 10, border: `1px solid ${P.border}`, background: P.bg, color: P.text, outline: "none", width: "100%" }} value={locationIsCustom ? "Other" : (form.location || "")} onChange={(e) => { if (e.target.value === "Other") { setLocationIsCustom(true); setForm(f => ({ ...f, location: "" })); } else { setLocationIsCustom(false); setForm(f => ({ ...f, location: e.target.value })); } }}>
+                  <option value="">Select city…</option>
+                  {LOCATION_PRESETS.map(loc => <option key={loc} value={loc}>{loc}</option>)}
+                  <option value="Other">Other</option>
+                </select>
+                {locationIsCustom && (
+                  <input type="text" style={{ fontFamily: sans, fontSize: 13, padding: "10px 12px", borderRadius: 10, border: `1px solid ${P.border}`, background: P.bg, color: P.text, outline: "none", width: "100%", marginTop: 6 }} placeholder="Enter city…" value={form.location} onChange={(e) => setForm(f => ({ ...f, location: e.target.value }))} />
+                )}
+              </label>
+              {[["linkedin","LinkedIn URL","url","linkedin.com/in/janedoe"],["phone","Phone (optional)","tel","(555) 123-4567"]].map(([k,l,t,p]) => (
                 <label key={k} style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                   <span style={{ fontFamily: sans, fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase", color: P.textMd }}>{l}</span>
                   <input type={t} style={{ fontFamily: sans, fontSize: 13, padding: "10px 12px", borderRadius: 10, border: `1px solid ${P.border}`, background: P.bg, color: P.text, outline: "none", width: "100%" }} placeholder={p} value={form[k]} onChange={(e) => setForm((f) => ({ ...f, [k]: e.target.value }))} />
