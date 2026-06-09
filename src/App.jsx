@@ -156,6 +156,15 @@ export default function NetworkingTracker() {
       const items = snap.docs.map(d => ({ ...emptyContact, ...d.data(), id: d.id, responded: d.data().responded === true }));
       setContacts(items);
       setLoaded(true);
+      // Backfill missing updatedAt for old contacts (only writes for ones missing it)
+      const now = Date.now();
+      let offset = 0;
+      items.forEach(c => {
+        if (!c.updatedAt) {
+          offset += 1;
+          setDoc(doc(contactsCol, c.id), { ...c, updatedAt: now - offset * 1000 }, { merge: true }).catch(() => {});
+        }
+      });
     }, (err) => { console.error("Contacts load error:", err); setLoaded(true); });
     return () => unsub();
   }, []);
