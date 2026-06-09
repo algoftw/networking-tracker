@@ -197,11 +197,16 @@ export default function NetworkingTracker() {
     try {
       if (!form.firstName.trim() || !form.lastName.trim()) { showToast("First and last name are required."); return; }
       const id = editing || form.id || uid();
-      const safeForm = { ...emptyContact, ...form, id, updatedAt: Date.now() };
+      const cleanCity = (form.city || "").trim();
+      const safeForm = { ...emptyContact, ...form, id, city: cleanCity, updatedAt: Date.now() };
+      // Close modal immediately, then save in background
+      const wasEditing = !!editing;
+      setShowForm(false);
+      setEditing(null);
+      setForm({ ...emptyContact });
       await setDoc(doc(contactsCol, id), safeForm);
-      showToast(editing ? "Contact updated." : "Contact added.");
-      setShowForm(false); setEditing(null); setForm({ ...emptyContact });
-    } catch (err) { console.error("Save error:", err); showToast("Error saving contact."); }
+      showToast(wasEditing ? "Contact updated." : "Contact added.");
+    } catch (err) { console.error("Save error:", err); showToast("Error saving: " + (err.message || "unknown")); }
   };
   const deleteContact = async (id) => {
     try { await deleteDoc(doc(contactsCol, id)); setDeleteConfirm(null); showToast("Contact removed."); }
@@ -542,6 +547,24 @@ export default function NetworkingTracker() {
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 20 }} onClick={() => setShowForm(false)}>
           <div ref={formRef} style={{ background: "#bc9e82", border: `1px solid ${P.border}`, borderRadius: 18, padding: "32px 28px", maxWidth: 600, width: "100%", animation: "fadeIn 0.3s ease", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.12)" }} onClick={(e) => e.stopPropagation()}>
             <h2 style={{ fontFamily: serif, fontSize: 22, fontWeight: 400, color: P.forest, margin: "0 0 24px" }}>{editing ? "Edit Contact" : "New Contact"}</h2>
+            {(() => {
+              const fn = (form.firstName || "").trim().toLowerCase();
+              const ln = (form.lastName || "").trim().toLowerCase();
+              if (!fn || !ln) return null;
+              const dup = contacts.find(c => c.id !== (editing || form.id) && (c.firstName || "").trim().toLowerCase() === fn && (c.lastName || "").trim().toLowerCase() === ln);
+              if (!dup) return null;
+              return (
+                <div style={{ background: "#fef2f2", border: "2px solid #dc2626", borderRadius: 12, padding: "14px 18px", marginBottom: 20, display: "flex", alignItems: "flex-start", gap: 12 }}>
+                  <span style={{ fontSize: 22, lineHeight: 1 }}>⚠️</span>
+                  <div>
+                    <div style={{ fontFamily: sans, fontSize: 14, fontWeight: 700, color: "#991b1b", marginBottom: 4 }}>DUPLICATE WARNING</div>
+                    <div style={{ fontFamily: sans, fontSize: 12, color: "#7f1d1d", lineHeight: 1.5 }}>
+                      A contact named <strong>{dup.firstName} {dup.lastName}</strong> already exists{dup.company ? ` at ${dup.company}` : ""}. Status: <strong>{dup.status}</strong>{dup.lastContacted ? `, last contacted ${dup.lastContacted}` : ""}. Double-check before saving to avoid double-emailing.
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px 14px" }}>
               {[["firstName","First Name *","text","Jane"],["lastName","Last Name *","text","Doe"],["profession","Profession","text","Investment Analyst"],["email","Email","email","jane.doe@firm.com"],["company","Company","text","Goldman Sachs"],["linkedin","LinkedIn URL","url","linkedin.com/in/janedoe"],["phone","Phone (optional)","tel","(555) 123-4567"]].map(([k,l,t,p]) => (
                 <label key={k} style={{ display: "flex", flexDirection: "column", gap: 5 }}>
