@@ -129,7 +129,7 @@ export default function NetworkingTracker() {
   const [form, setForm] = useState({ ...emptyContact });
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("All");
-  const [sortField, setSortField] = useState("");
+  const [sortField, setSortField] = useState("lastContacted");
   const [sortDir, setSortDir] = useState("desc");
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [toast, setToast] = useState(null);
@@ -160,15 +160,6 @@ export default function NetworkingTracker() {
       const items = snap.docs.map(d => ({ ...emptyContact, ...d.data(), id: d.id, responded: d.data().responded === true }));
       setContacts(items);
       setLoaded(true);
-      // Backfill missing updatedAt with OLD timestamps (year 2020) so real edits always sort above
-      const oldBase = new Date("2020-01-01").getTime();
-      let offset = 0;
-      items.forEach(c => {
-        if (!c.updatedAt) {
-          offset += 1;
-          setDoc(doc(contactsCol, c.id), { ...c, updatedAt: oldBase + offset * 1000 }, { merge: true }).catch(() => {});
-        }
-      });
     }, (err) => { console.error("Contacts load error:", err); setLoaded(true); });
     return () => unsub();
   }, []);
@@ -202,13 +193,12 @@ export default function NetworkingTracker() {
       if (!form.firstName.trim() || !form.lastName.trim()) { showToast("First and last name are required."); return; }
       const id = editing || form.id || uid();
       const cleanCity = (form.city || "").trim();
-      const safeForm = { ...emptyContact, ...form, id, city: cleanCity, updatedAt: Date.now() };
+      const safeForm = { ...emptyContact, ...form, id, city: cleanCity };
       // Close modal immediately, then save in background
       const wasEditing = !!editing;
       setShowForm(false);
       setEditing(null);
       setForm({ ...emptyContact });
-      setSortField(""); // Reset sort so newest goes to top
       await setDoc(doc(contactsCol, id), safeForm);
       showToast(wasEditing ? "Contact updated." : "Contact added.");
     } catch (err) { console.error("Save error:", err); showToast("Error saving: " + (err.message || "unknown")); }
@@ -294,7 +284,7 @@ export default function NetworkingTracker() {
     }).catch(() => showToast("Import failed — run: npm install xlsx"));
   };
 
-  const filtered = contacts.filter((c) => { if (filterStatus !== "All" && c.status !== filterStatus) return false; if (!search) return true; const q = search.toLowerCase(); return c.firstName.toLowerCase().includes(q) || c.lastName.toLowerCase().includes(q) || c.company.toLowerCase().includes(q) || c.profession.toLowerCase().includes(q) || c.email.toLowerCase().includes(q); }).sort((a, b) => { if (!sortField) return (b.updatedAt || 0) - (a.updatedAt || 0); if (sortField === "lastContacted") { const da = a.lastContacted ? new Date(a.lastContacted).getTime() : 0; const db = b.lastContacted ? new Date(b.lastContacted).getTime() : 0; return sortDir === "asc" ? da - db : db - da; } const va = (a[sortField] || "").toLowerCase(); const vb = (b[sortField] || "").toLowerCase(); return sortDir === "asc" ? va.localeCompare(vb) : vb.localeCompare(va); });
+  const filtered = contacts.filter((c) => { if (filterStatus !== "All" && c.status !== filterStatus) return false; if (!search) return true; const q = search.toLowerCase(); return c.firstName.toLowerCase().includes(q) || c.lastName.toLowerCase().includes(q) || c.company.toLowerCase().includes(q) || c.profession.toLowerCase().includes(q) || c.email.toLowerCase().includes(q); }).sort((a, b) => { if (sortField === "lastContacted") { const da = a.lastContacted ? new Date(a.lastContacted).getTime() : 0; const db = b.lastContacted ? new Date(b.lastContacted).getTime() : 0; return sortDir === "asc" ? da - db : db - da; } const va = (a[sortField] || "").toLowerCase(); const vb = (b[sortField] || "").toLowerCase(); return sortDir === "asc" ? va.localeCompare(vb) : vb.localeCompare(va); });
   const statusCounts = STATUS_OPTIONS.reduce((acc, s) => { acc[s] = contacts.filter((c) => c.status === s).length; return acc; }, {});
   const toggleSort = (f) => { if (sortField === f) setSortDir((d) => (d === "asc" ? "desc" : "asc")); else { setSortField(f); setSortDir("asc"); } };
   const SortIcon = ({ field }) => (<span style={{ opacity: sortField === field ? 1 : 0.25, marginLeft: 4, fontSize: 10, color: P.forest }}>{sortField === field && sortDir === "desc" ? "▼" : "▲"}</span>);
