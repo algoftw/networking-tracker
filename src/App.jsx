@@ -18,7 +18,7 @@ const settingsDoc = doc(db, "settings", "resume");
 
 const STORAGE_KEY = "finance-contacts";
 
-const emptyContact = { id: "", firstName: "", lastName: "", profession: "Investment Banking Analyst", email: "", company: "", linkedin: "", phone: "", city: "", status: "Contacted", notes: "", lastContacted: "", responded: false };
+const emptyContact = { id: "", firstName: "", lastName: "", profession: "investment banking analyst", email: "", company: "", linkedin: "", phone: "", city: "", status: "Contacted", notes: "", lastContacted: "", responded: false };
 
 const CITY_OPTIONS = ["New York", "Chicago", "San Francisco", "Dallas", "Houston", "Other"];
 
@@ -188,7 +188,7 @@ export default function NetworkingTracker() {
     try {
       if (!form.firstName.trim() || !form.lastName.trim()) { showToast("First and last name are required."); return; }
       const id = editing || form.id || uid();
-      const safeForm = { ...emptyContact, ...form, id };
+      const safeForm = { ...emptyContact, ...form, id, updatedAt: Date.now() };
       await setDoc(doc(contactsCol, id), safeForm);
       showToast(editing ? "Contact updated." : "Contact added.");
       setShowForm(false); setEditing(null); setForm({ ...emptyContact });
@@ -275,8 +275,7 @@ export default function NetworkingTracker() {
     }).catch(() => showToast("Import failed — run: npm install xlsx"));
   };
 
-  const filtered = contacts.filter((c) => { if (filterStatus !== "All" && c.status !== filterStatus) return false; if (!search) return true; const q = search.toLowerCase(); return c.firstName.toLowerCase().includes(q) || c.lastName.toLowerCase().includes(q) || c.company.toLowerCase().includes(q) || c.profession.toLowerCase().includes(q) || c.email.toLowerCase().includes(q); }).sort((a, b) => { if (!sortField) return 0; if (sortField === "lastContacted") { const da = a.lastContacted ? new Date(a.lastContacted).getTime() : 0; const db = b.lastContacted ? new Date(b.lastContacted).getTime() : 0; return sortDir === "asc" ? da - db : db - da; } const va = (a[sortField] || "").toLowerCase(); const vb = (b[sortField] || "").toLowerCase(); return sortDir === "asc" ? va.localeCompare(vb) : vb.localeCompare(va); });
-  if (!sortField) filtered.reverse();
+  const filtered = contacts.filter((c) => { if (filterStatus !== "All" && c.status !== filterStatus) return false; if (!search) return true; const q = search.toLowerCase(); return c.firstName.toLowerCase().includes(q) || c.lastName.toLowerCase().includes(q) || c.company.toLowerCase().includes(q) || c.profession.toLowerCase().includes(q) || c.email.toLowerCase().includes(q); }).sort((a, b) => { if (!sortField) return (b.updatedAt || 0) - (a.updatedAt || 0); if (sortField === "lastContacted") { const da = a.lastContacted ? new Date(a.lastContacted).getTime() : 0; const db = b.lastContacted ? new Date(b.lastContacted).getTime() : 0; return sortDir === "asc" ? da - db : db - da; } const va = (a[sortField] || "").toLowerCase(); const vb = (b[sortField] || "").toLowerCase(); return sortDir === "asc" ? va.localeCompare(vb) : vb.localeCompare(va); });
   const statusCounts = STATUS_OPTIONS.reduce((acc, s) => { acc[s] = contacts.filter((c) => c.status === s).length; return acc; }, {});
   const toggleSort = (f) => { if (sortField === f) setSortDir((d) => (d === "asc" ? "desc" : "asc")); else { setSortField(f); setSortDir("asc"); } };
   const SortIcon = ({ field }) => (<span style={{ opacity: sortField === field ? 1 : 0.25, marginLeft: 4, fontSize: 10, color: P.forest }}>{sortField === field && sortDir === "desc" ? "▼" : "▲"}</span>);
