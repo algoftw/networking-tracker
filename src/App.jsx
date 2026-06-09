@@ -18,7 +18,9 @@ const settingsDoc = doc(db, "settings", "resume");
 
 const STORAGE_KEY = "finance-contacts";
 
-const emptyContact = { id: "", firstName: "", lastName: "", profession: "", email: "", company: "", linkedin: "", phone: "", status: "Contacted", notes: "", lastContacted: "", responded: false };
+const emptyContact = { id: "", firstName: "", lastName: "", profession: "Investment Banking Analyst", email: "", company: "", linkedin: "", phone: "", city: "", status: "Contacted", notes: "", lastContacted: "", responded: false };
+
+const CITY_OPTIONS = ["New York", "Chicago", "San Francisco", "Dallas", "Houston", "Other"];
 
 function daysSince(dateStr) { if (!dateStr) return null; const d = new Date(dateStr); if (isNaN(d)) return null; return Math.floor((new Date() - d) / 864e5); }
 function formatDaysAgo(days) { if (days === null) return null; if (days === 0) return "Today"; if (days === 1) return "1 day ago"; if (days < 30) return `${days}d ago`; if (days < 365) return `${Math.floor(days / 30)}mo ${days % 30}d ago`; return `${Math.floor(days / 365)}y ${Math.floor((days % 365) / 30)}mo ago`; }
@@ -162,19 +164,19 @@ export default function NetworkingTracker() {
   const openAdd = () => { setEditing(null); setForm({ ...emptyContact, id: uid() }); setShowForm(true); setTimeout(() => formRef.current?.scrollIntoView({ behavior: "smooth" }), 100); };
   const openEdit = (c) => { setEditing(c.id); setForm({ ...emptyContact, ...c, responded: c.responded === true }); setShowForm(true); setTimeout(() => formRef.current?.scrollIntoView({ behavior: "smooth" }), 100); };
   const generateEmailTemplate = (contact) => {
-    return `Hi ${contact.firstName},\n\nI hope you are doing well. My name is Rohit Modi. I am a Senior at The University of Texas at Dallas (fall 2026), pursuing a B.S. in Finance and Accounting. I am interested in learning more about an ${contact.profession || "[contact role]"} role at ${contact.company || "[Company Name]"} in (City the Analyst Works). I would love to hear about your time in the (Specific Group of Analyst).\n\nIf your time permits, would you be willing to call and talk about your experience within the role? I appreciate any time and advice you have to offer.\n\nAttached is my resume for reference.`;
+    return `Hi ${contact.firstName},\n\nI hope you are doing well. My name is Rohit Modi. I am a Senior at The University of Texas at Dallas (fall 2026), pursuing a B.S. in Finance and Accounting. I am interested in learning more about an ${contact.profession || "[contact role]"} role at ${contact.company || "[Company Name]"} in ${contact.city || "(City the Analyst Works)"}. I would love to hear about your time in the (Specific Group of Analyst).\n\nIf your time permits, would you be willing to call and talk about your experience within the role? I appreciate any time and advice you have to offer.\n\nAttached is my resume for reference.`;
   };
 
   const openGmailDraft = (contact) => {
     const body = generateEmailTemplate(contact);
-    const subject = "Coffee Chat Request - From a Current UTD Student";
+    const subject = `UT Dallas Senior - Interested in ${contact.company || "[Company]"} IB`;
     const to = contact.email || "";
     const url = `https://mail.google.com/mail/u/2/?view=cm&to=${encodeURIComponent(to)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     window.open(url, "_blank");
   };
 
   const copyLinkedInMessage = (contact) => {
-    const msg = `Hi ${contact.firstName},\n\nI'm a current senior at UT Dallas (fall '26), interested in learning more about ${contact.profession || "[contact role]"} at ${contact.company || "[Company]"} in (city analyst lives in). I would love to hear about your time in the (group of analyst) Group.\n\nWould you be open to a brief call? I appreciate any time and advice you have to offer.`;
+    const msg = `Hi ${contact.firstName},\n\nI'm a current senior at UT Dallas (fall '26), interested in learning more about ${contact.profession || "[contact role]"} at ${contact.company || "[Company]"} in ${contact.city || "(city analyst lives in)"}. I would love to hear about your time in the (group of analyst) Group.\n\nWould you be open to a brief call? I appreciate any time and advice you have to offer.`;
     navigator.clipboard.writeText(msg).then(() => {
       setCopiedId(contact.id);
       showToast("LinkedIn message copied!");
@@ -216,8 +218,8 @@ export default function NetworkingTracker() {
   const exportToExcel = () => {
     if (contacts.length === 0) { showToast("No contacts to export."); return; }
     import("xlsx").then((XLSX) => {
-      const headers = ["First Name","Last Name","Profession","Email","Company","LinkedIn","Phone","Last Contacted","Responded","Status","Notes"];
-      const rows = contacts.map(c => [c.firstName, c.lastName, c.profession, c.email, c.company, c.linkedin, c.phone || "", c.lastContacted, c.responded ? "Yes" : "No", c.status, c.notes]);
+      const headers = ["First Name","Last Name","Profession","Email","Company","LinkedIn","Phone","City","Last Contacted","Responded","Status","Notes"];
+      const rows = contacts.map(c => [c.firstName, c.lastName, c.profession, c.email, c.company, c.linkedin, c.phone || "", c.city || "", c.lastContacted, c.responded ? "Yes" : "No", c.status, c.notes]);
       const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Contacts");
@@ -243,7 +245,7 @@ export default function NetworkingTracker() {
           const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
           if (rows.length < 2) { showToast("File has no data."); return; }
           const headers = rows[0].map(h => String(h).toLowerCase().trim());
-          const keyMap = { "first name": "firstName", "firstname": "firstName", "last name": "lastName", "lastname": "lastName", "profession": "profession", "role": "profession", "email": "email", "company": "company", "linkedin": "linkedin", "linkedin url": "linkedin", "phone": "phone", "phone number": "phone", "last contacted": "lastContacted", "lastcontacted": "lastContacted", "responded": "responded", "replied": "responded", "status": "status", "notes": "notes" };
+          const keyMap = { "first name": "firstName", "firstname": "firstName", "last name": "lastName", "lastname": "lastName", "profession": "profession", "role": "profession", "email": "email", "company": "company", "linkedin": "linkedin", "linkedin url": "linkedin", "phone": "phone", "phone number": "phone", "city": "city", "last contacted": "lastContacted", "lastcontacted": "lastContacted", "responded": "responded", "replied": "responded", "status": "status", "notes": "notes" };
 
           // Delete all existing contacts
           await Promise.all(contacts.map(c => deleteDoc(doc(contactsCol, c.id))));
@@ -541,6 +543,27 @@ export default function NetworkingTracker() {
               ))}
               <label style={{ display: "flex", flexDirection: "column", gap: 5 }}><span style={{ fontFamily: sans, fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase", color: P.textMd }}>Last Contacted</span><input type="date" style={{ fontFamily: sans, fontSize: 13, padding: "10px 12px", borderRadius: 10, border: `1px solid ${P.border}`, background: P.bg, color: P.text, outline: "none", width: "100%" }} value={form.lastContacted} onChange={(e) => setForm((f) => ({ ...f, lastContacted: e.target.value }))} /></label>
               <label style={{ display: "flex", flexDirection: "column", gap: 5 }}><span style={{ fontFamily: sans, fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase", color: P.textMd }}>Status</span><select style={{ fontFamily: sans, fontSize: 13, padding: "10px 12px", borderRadius: 10, border: `1px solid ${P.border}`, background: P.bg, color: P.text, outline: "none", width: "100%" }} value={form.status} onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}>{STATUS_OPTIONS.map((x) => <option key={x} value={x}>{x}</option>)}</select></label>
+              <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                <span style={{ fontFamily: sans, fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase", color: P.textMd }}>City</span>
+                {(() => {
+                  const isOther = form.city && !CITY_OPTIONS.slice(0,-1).includes(form.city);
+                  const dropdownVal = isOther ? "Other" : (form.city || "");
+                  return (<>
+                    <select style={{ fontFamily: sans, fontSize: 13, padding: "10px 12px", borderRadius: 10, border: `1px solid ${P.border}`, background: P.bg, color: P.text, outline: "none", width: "100%" }} value={dropdownVal} onChange={(e) => {
+                      const v = e.target.value;
+                      if (v === "Other") setForm((f) => ({ ...f, city: f.city && !CITY_OPTIONS.slice(0,-1).includes(f.city) ? f.city : " " }));
+                      else if (v === "") setForm((f) => ({ ...f, city: "" }));
+                      else setForm((f) => ({ ...f, city: v }));
+                    }}>
+                      <option value="">— Select —</option>
+                      {CITY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                    {dropdownVal === "Other" && (
+                      <input type="text" placeholder="Enter city" style={{ fontFamily: sans, fontSize: 13, padding: "10px 12px", borderRadius: 10, border: `1px solid ${P.border}`, background: P.bg, color: P.text, outline: "none", width: "100%", marginTop: 6 }} value={form.city.trim() ? form.city : ""} onChange={(e) => setForm((f) => ({ ...f, city: e.target.value || " " }))} />
+                    )}
+                  </>);
+                })()}
+              </label>
               <label style={{ display: "flex", flexDirection: "column", gap: 5, gridColumn: "1 / -1" }}>
                 <span style={{ fontFamily: sans, fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase", color: P.textMd }}>Responded?</span>
                 <div style={{ display: "flex", gap: 10, marginTop: 2 }}>
