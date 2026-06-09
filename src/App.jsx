@@ -381,9 +381,9 @@ export default function NetworkingTracker() {
               <p style={{ color: P.textMd, marginTop: 16, fontSize: 14 }}>{contacts.length === 0 ? "No contacts yet — add your first one above." : "No contacts match your filters."}</p>
             </div>
           ) : (
-            <div className="nx-tablewrap" style={{ overflowX: "auto", borderRadius: 14, border: `1px solid ${P.border}`, background: P.white, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+            <div className="nx-tablewrap" style={{ overflow: "auto", maxHeight: "calc(100vh - 280px)", borderRadius: 14, border: `1px solid ${P.border}`, background: P.white, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
               <table className="nx-table" style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                <thead><tr style={{ background: P.bg2 }}>
+                <thead style={{ position: "sticky", top: 0, zIndex: 5 }}><tr style={{ background: P.bg2 }}>
                   {[["firstName","First Name"],["lastName","Last Name"],["profession","Profession"],["email","Email"],["company","Company"]].map(([f,l]) => (
                     <th key={f} style={{ fontFamily: sans, fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase", color: P.textMd, padding: "14px 14px", textAlign: "left", borderBottom: `1px solid ${P.border}`, cursor: "pointer", userSelect: "none", whiteSpace: "nowrap" }} onClick={() => toggleSort(f)}>{l}<SortIcon field={f} /></th>
                   ))}
@@ -550,9 +550,18 @@ export default function NetworkingTracker() {
             {(() => {
               const fn = (form.firstName || "").trim().toLowerCase();
               const ln = (form.lastName || "").trim().toLowerCase();
-              if (!fn || !ln) return null;
-              const dup = contacts.find(c => c.id !== (editing || form.id) && (c.firstName || "").trim().toLowerCase() === fn && (c.lastName || "").trim().toLowerCase() === ln);
-              if (!dup) return null;
+              if (!fn && !ln) return null;
+              const dups = contacts.filter(c => {
+                if (c.id === (editing || form.id)) return false;
+                const cfn = (c.firstName || "").trim().toLowerCase();
+                const cln = (c.lastName || "").trim().toLowerCase();
+                // Match if BOTH names match, OR if full name matches in any order
+                if (fn && ln && cfn === fn && cln === ln) return true;
+                if (fn && ln && cfn === ln && cln === fn) return true;
+                return false;
+              });
+              if (dups.length === 0) return null;
+              const dup = dups[0];
               return (
                 <div style={{ background: "#fef2f2", border: "2px solid #dc2626", borderRadius: 12, padding: "14px 18px", marginBottom: 20, display: "flex", alignItems: "flex-start", gap: 12 }}>
                   <span style={{ fontSize: 22, lineHeight: 1 }}>⚠️</span>
