@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
+import { db } from "./firebase";
+import { collection, doc, setDoc, deleteDoc, getDocs, onSnapshot, writeBatch } from "firebase/firestore";
 
 const STORAGE_KEY = "finance-contacts";
 
@@ -133,8 +135,38 @@ export default function NetworkingTracker() {
     } catch {}
   }, []);
 
-  useEffect(() => { (async () => { try { const r = (() => { try { return { value: localStorage.getItem(STORAGE_KEY) }; } catch { return null; } })(); if (r && r.value) { const parsed = JSON.parse(r.value); const patched = parsed.map(c => ({ ...emptyContact, ...c, responded: c.responded === true })); setContacts(patched); } } catch {} setLoaded(true); })(); }, []);
-  useEffect(() => { if (!loaded) return; (async () => { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(contacts)); } catch {} })(); }, [contacts, loaded]);
+  const didMigrateRef = useRef(false);
+  useEffect(() => {
+    const colRef = collection(db, "contacts");
+    const unsub = onSnapshot(colRef, async (snap) => {
+      if (!didMigrateRef.current) {
+        didMigrateRef.current = true;
+        if (snap.empty) {
+          try {
+            const raw = localStorage.getItem(STORAGE_KEY);
+            if (raw) {
+              const local = JSON.parse(raw);
+              if (local.length > 0) {
+                const batch = writeBatch(db);
+                local.forEach(c => {
+                  const contact = { ...emptyContact, ...c, responded: c.responded === true };
+                  if (!contact.id) contact.id = uid();
+                  batch.set(doc(db, "contacts", contact.id), contact);
+                });
+                await batch.commit();
+                localStorage.removeItem(STORAGE_KEY);
+                return;
+              }
+            }
+          } catch {}
+        }
+      }
+      const data = snap.docs.map(d => ({ ...emptyContact, ...d.data(), responded: d.data().responded === true }));
+      setContacts(data);
+      setLoaded(true);
+    }, () => setLoaded(true));
+    return unsub;
+  }, []);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2400); };
   const openAdd = () => { setEditing(null); setForm({ ...emptyContact, id: uid() }); setLocationIsCustom(false); setShowForm(true); setTimeout(() => formRef.current?.scrollIntoView({ behavior: "smooth" }), 100); };
@@ -160,17 +192,25 @@ export default function NetworkingTracker() {
     }).catch(() => showToast("Could not copy."));
   };
 
-  const saveContact = () => {
+  const saveContact = async () => {
     try {
       if (!form.firstName.trim() || !form.lastName.trim()) { showToast("First and last name are required."); return; }
       const safeForm = { ...emptyContact, ...form };
-      if (editing) { setContacts((p) => [...p.filter((c) => c.id !== editing), { ...safeForm }]); showToast("Contact updated."); }
-      else { setContacts((p) => [...p, { ...safeForm }]); showToast("Contact added."); }
+      await setDoc(doc(db, "contacts", safeForm.id), safeForm);
+      showToast(editing ? "Contact updated." : "Contact added.");
       setShowForm(false); setEditing(null); setForm({ ...emptyContact });
     } catch (err) { console.error("Save error:", err); showToast("Error saving contact."); }
   };
-  const deleteContact = (id) => { setContacts((p) => p.filter((c) => c.id !== id)); setDeleteConfirm(null); showToast("Contact removed."); };
-  const resetAll = async () => { setContacts([]); try { localStorage.removeItem(STORAGE_KEY); } catch {} showToast("All contacts cleared."); };
+  const deleteContact = async (id) => { await deleteDoc(doc(db, "contacts", id)); setDeleteConfirm(null); showToast("Contact removed."); };
+  const resetAll = async () => {
+    try {
+      const snap = await getDocs(collection(db, "contacts"));
+      const batch = writeBatch(db);
+      snap.docs.forEach(d => batch.delete(d.ref));
+      await batch.commit();
+    } catch {}
+    showToast("All contacts cleared.");
+  };
 
   const handleResumeUpload = (file) => {
     if (!file) return;
