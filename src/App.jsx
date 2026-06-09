@@ -22,7 +22,11 @@ const emptyContact = { id: "", firstName: "", lastName: "", profession: "investm
 
 const CITY_OPTIONS = ["New York", "Chicago", "San Francisco", "Dallas", "Houston", "Other"];
 
-function daysSince(dateStr) { if (!dateStr) return null; const d = new Date(dateStr); if (isNaN(d)) return null; return Math.floor((new Date() - d) / 864e5); }
+function nowInChicago() {
+  return new Date(new Date().toLocaleString("en-US", { timeZone: "America/Chicago" }));
+}
+
+function daysSince(dateStr) { if (!dateStr) return null; const d = new Date(dateStr + (dateStr.length === 10 ? "T12:00:00" : "")); if (isNaN(d)) return null; return Math.floor((nowInChicago() - d) / 864e5); }
 function formatDaysAgo(days) { if (days === null) return null; if (days === 0) return "Today"; if (days === 1) return "1 day ago"; if (days < 30) return `${days}d ago`; if (days < 365) return `${Math.floor(days / 30)}mo ${days % 30}d ago`; return `${Math.floor(days / 365)}y ${Math.floor((days % 365) / 30)}mo ago`; }
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
 
@@ -204,6 +208,7 @@ export default function NetworkingTracker() {
       setShowForm(false);
       setEditing(null);
       setForm({ ...emptyContact });
+      setSortField(""); // Reset sort so newest goes to top
       await setDoc(doc(contactsCol, id), safeForm);
       showToast(wasEditing ? "Contact updated." : "Contact added.");
     } catch (err) { console.error("Save error:", err); showToast("Error saving: " + (err.message || "unknown")); }
@@ -220,7 +225,7 @@ export default function NetworkingTracker() {
     const reader = new FileReader();
     reader.onload = async () => {
       const data = reader.result;
-      const now = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+      const now = nowInChicago().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/Chicago" });
       try {
         await setDoc(settingsDoc, { name: file.name, date: now, data });
         showToast("Resume uploaded!");
@@ -305,7 +310,7 @@ export default function NetworkingTracker() {
     const avgDays = (() => { const arr = contacts.map(c => daysSince(c.lastContacted)).filter(d => d !== null); return arr.length === 0 ? 0 : Math.round(arr.reduce((a, b) => a + b, 0) / arr.length); })();
     const companyMap = {}; contacts.forEach(c => { const co = c.company?.trim() || "Unknown"; if (!companyMap[co]) companyMap[co] = { total: 0, responded: 0 }; companyMap[co].total++; if (c.responded) companyMap[co].responded++; });
     const topCompanies = Object.entries(companyMap).sort((a, b) => b[1].total - a[1].total).slice(0, 8);
-    const monthMap = {}; const now = new Date(); for (let i = 5; i >= 0; i--) { const d = new Date(now.getFullYear(), now.getMonth() - i, 1); const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; monthMap[key] = { label: d.toLocaleDateString("en-US", { month: "short", year: "2-digit" }), outreach: 0, responses: 0 }; }
+    const monthMap = {}; const now = nowInChicago(); for (let i = 5; i >= 0; i--) { const d = new Date(now.getFullYear(), now.getMonth() - i, 1); const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; monthMap[key] = { label: d.toLocaleDateString("en-US", { month: "short", year: "2-digit", timeZone: "America/Chicago" }), outreach: 0, responses: 0 }; }
     contacts.forEach(c => { if (c.lastContacted) { const key = c.lastContacted.slice(0, 7); if (monthMap[key]) { monthMap[key].outreach++; if (c.responded) monthMap[key].responses++; } } });
     return { total, reachedOut, responded, noResponse, responseRate, neverContacted, staleCount, avgDays, topCompanies, monthlyData: Object.values(monthMap) };
   }, [contacts]);
