@@ -1,18 +1,30 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import { db } from "./firebase";
-import { collection, doc, setDoc, deleteDoc, getDocs, onSnapshot, writeBatch } from "firebase/firestore";
+import { initializeApp } from "firebase/app";
+import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from "firebase/firestore";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDBZZ_6aSaBQJpfOCzawiOiGlQfZee3S0Y",
+  authDomain: "networking-tracker-a134a.firebaseapp.com",
+  projectId: "networking-tracker-a134a",
+  storageBucket: "networking-tracker-a134a.firebasestorage.app",
+  messagingSenderId: "967222059152",
+  appId: "1:967222059152:web:3293dd366e66938bea7815"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const contactsCol = collection(db, "contacts");
+const settingsDoc = doc(db, "settings", "resume");
 
 const STORAGE_KEY = "finance-contacts";
 
-const emptyContact = { id: "", firstName: "", lastName: "", profession: "investment banking analyst", email: "", company: "", linkedin: "", phone: "", location: "", status: "Contacted", notes: "", lastContacted: "", responded: false };
+const emptyContact = { id: "", firstName: "", lastName: "", profession: "", email: "", company: "", linkedin: "", phone: "", status: "Contacted", notes: "", lastContacted: "", responded: false };
 
-function getTodayCST() { const s = new Date().toLocaleDateString("en-CA", { timeZone: "America/Chicago" }); const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); }
-function daysSince(dateStr) { if (!dateStr) return null; const parts = dateStr.split("-").map(Number); if (parts.length < 3) return null; const d = new Date(parts[0], parts[1] - 1, parts[2]); if (isNaN(d)) return null; return Math.floor((getTodayCST() - d) / 864e5); }
+function daysSince(dateStr) { if (!dateStr) return null; const d = new Date(dateStr); if (isNaN(d)) return null; return Math.floor((new Date() - d) / 864e5); }
 function formatDaysAgo(days) { if (days === null) return null; if (days === 0) return "Today"; if (days === 1) return "1 day ago"; if (days < 30) return `${days}d ago`; if (days < 365) return `${Math.floor(days / 30)}mo ${days % 30}d ago`; return `${Math.floor(days / 365)}y ${Math.floor((days % 365) / 30)}mo ago`; }
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
 
 const STATUS_OPTIONS = ["Contacted", "Followed Up", "Connected", "Spoke With", "No Response"];
-const LOCATION_PRESETS = ["New York", "Chicago", "San Francisco", "Dallas", "Houston"];
 const SC = {
   Contacted:      { bg: "#e0f2fe", text: "#0369a1", dot: "#0ea5e9", fill: "#0ea5e9" },
   "Followed Up":  { bg: "#fef3c7", text: "#92400e", dot: "#f59e0b", fill: "#f59e0b" },
@@ -116,75 +128,53 @@ export default function NetworkingTracker() {
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [toast, setToast] = useState(null);
   const formRef = useRef(null);
-  const importInputRef = useRef(null);
   const [resumeFile, setResumeFile] = useState(null);
   const [resumeName, setResumeName] = useState("");
   const [resumeDate, setResumeDate] = useState("");
   const resumeInputRef = useRef(null);
   const [showPreview, setShowPreview] = useState(false);
   const [copiedId, setCopiedId] = useState(null);
-  const [locationIsCustom, setLocationIsCustom] = useState(false);
 
-  // Load resume metadata
+  // Load resume metadata from Firestore
   useEffect(() => {
-    try {
-      const meta = localStorage.getItem("finance-resume-meta");
-      if (meta) { const m = JSON.parse(meta); setResumeName(m.name || ""); setResumeDate(m.date || ""); }
-      const data = localStorage.getItem("finance-resume-data");
-      if (data) setResumeFile(data);
-    } catch {}
+    const unsub = onSnapshot(settingsDoc, (snap) => {
+      if (snap.exists()) {
+        const d = snap.data();
+        setResumeName(d.name || "");
+        setResumeDate(d.date || "");
+        setResumeFile(d.data || null);
+      }
+    }, (err) => console.error("Resume load error:", err));
+    return () => unsub();
   }, []);
 
-  const didMigrateRef = useRef(false);
+  // Real-time sync of contacts from Firestore
   useEffect(() => {
-    const colRef = collection(db, "contacts");
-    const unsub = onSnapshot(colRef, async (snap) => {
-      if (!didMigrateRef.current) {
-        didMigrateRef.current = true;
-        if (snap.empty) {
-          try {
-            const raw = localStorage.getItem(STORAGE_KEY);
-            if (raw) {
-              const local = JSON.parse(raw);
-              if (local.length > 0) {
-                const batch = writeBatch(db);
-                local.forEach(c => {
-                  const contact = { ...emptyContact, ...c, responded: c.responded === true };
-                  if (!contact.id) contact.id = uid();
-                  batch.set(doc(db, "contacts", contact.id), contact);
-                });
-                await batch.commit();
-                localStorage.removeItem(STORAGE_KEY);
-                return;
-              }
-            }
-          } catch {}
-        }
-      }
-      const data = snap.docs.map(d => ({ ...emptyContact, ...d.data(), responded: d.data().responded === true }));
-      setContacts(data);
+    const unsub = onSnapshot(contactsCol, (snap) => {
+      const items = snap.docs.map(d => ({ ...emptyContact, ...d.data(), id: d.id, responded: d.data().responded === true }));
+      setContacts(items);
       setLoaded(true);
-    }, () => setLoaded(true));
-    return unsub;
+    }, (err) => { console.error("Contacts load error:", err); setLoaded(true); });
+    return () => unsub();
   }, []);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2400); };
-  const openAdd = () => { setEditing(null); setForm({ ...emptyContact, id: uid() }); setLocationIsCustom(false); setShowForm(true); setTimeout(() => formRef.current?.scrollIntoView({ behavior: "smooth" }), 100); };
-  const openEdit = (c) => { setEditing(c.id); setForm({ ...emptyContact, ...c, responded: c.responded === true }); setLocationIsCustom(!!c.location && !LOCATION_PRESETS.includes(c.location)); setShowForm(true); setTimeout(() => formRef.current?.scrollIntoView({ behavior: "smooth" }), 100); };
+  const openAdd = () => { setEditing(null); setForm({ ...emptyContact, id: uid() }); setShowForm(true); setTimeout(() => formRef.current?.scrollIntoView({ behavior: "smooth" }), 100); };
+  const openEdit = (c) => { setEditing(c.id); setForm({ ...emptyContact, ...c, responded: c.responded === true }); setShowForm(true); setTimeout(() => formRef.current?.scrollIntoView({ behavior: "smooth" }), 100); };
   const generateEmailTemplate = (contact) => {
-    return `Hi ${contact.firstName},\n\nI hope you are doing well. My name is Rohit Modi. I am a Senior at The University of Texas at Dallas (fall 2026), pursuing a B.S. in Finance and Accounting. I am interested in learning more about an ${contact.profession || "[contact role]"} role at ${contact.company || "[Company Name]"} in ${contact.location || "(City the Analyst Works)"}. I would love to hear about your time in the (Specific Group of Analyst).\n\nIf your time permits, would you be willing to call and talk about your experience within the role? I appreciate any time and advice you have to offer.\n\nAttached is my resume for reference.`;
+    return `Hi ${contact.firstName},\n\nI hope you are doing well. My name is Rohit Modi. I am a Senior at The University of Texas at Dallas (fall 2026), pursuing a B.S. in Finance and Accounting. I am interested in learning more about an ${contact.profession || "[contact role]"} role at ${contact.company || "[Company Name]"} in (City the Analyst Works). I would love to hear about your time in the (Specific Group of Analyst).\n\nIf your time permits, would you be willing to call and talk about your experience within the role? I appreciate any time and advice you have to offer.\n\nAttached is my resume for reference.`;
   };
 
   const openGmailDraft = (contact) => {
     const body = generateEmailTemplate(contact);
-    const subject = `UT Dallas Senior - Interested in ${contact.company || "[Company Name]"} IB`;
+    const subject = "Coffee Chat Request - From a Current UTD Student";
     const to = contact.email || "";
     const url = `https://mail.google.com/mail/u/2/?view=cm&to=${encodeURIComponent(to)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     window.open(url, "_blank");
   };
 
   const copyLinkedInMessage = (contact) => {
-    const msg = `Hi ${contact.firstName},\n\nI'm a current senior at UT Dallas (fall '26), interested in learning more about ${contact.profession || "[contact role]"} at ${contact.company || "[Company]"} in ${contact.location || "(city analyst lives in)"}. I would love to hear about your time in the (group of analyst) Group.\n\nWould you be open to a brief call? I appreciate any time and advice you have to offer.`;
+    const msg = `Hi ${contact.firstName},\n\nI'm a current senior at UT Dallas (fall '26), interested in learning more about ${contact.profession || "[contact role]"} at ${contact.company || "[Company]"} in (city analyst lives in). I would love to hear about your time in the (group of analyst) Group.\n\nWould you be open to a brief call? I appreciate any time and advice you have to offer.`;
     navigator.clipboard.writeText(msg).then(() => {
       setCopiedId(contact.id);
       showToast("LinkedIn message copied!");
@@ -195,86 +185,32 @@ export default function NetworkingTracker() {
   const saveContact = async () => {
     try {
       if (!form.firstName.trim() || !form.lastName.trim()) { showToast("First and last name are required."); return; }
-      const safeForm = { ...emptyContact, ...form };
-      await setDoc(doc(db, "contacts", safeForm.id), safeForm);
+      const id = editing || form.id || uid();
+      const safeForm = { ...emptyContact, ...form, id };
+      await setDoc(doc(contactsCol, id), safeForm);
       showToast(editing ? "Contact updated." : "Contact added.");
       setShowForm(false); setEditing(null); setForm({ ...emptyContact });
     } catch (err) { console.error("Save error:", err); showToast("Error saving contact."); }
   };
-  const deleteContact = async (id) => { await deleteDoc(doc(db, "contacts", id)); setDeleteConfirm(null); showToast("Contact removed."); };
-  const resetAll = async () => {
-    try {
-      const snap = await getDocs(collection(db, "contacts"));
-      const batch = writeBatch(db);
-      snap.docs.forEach(d => batch.delete(d.ref));
-      await batch.commit();
-    } catch {}
-    showToast("All contacts cleared.");
+  const deleteContact = async (id) => {
+    try { await deleteDoc(doc(contactsCol, id)); setDeleteConfirm(null); showToast("Contact removed."); }
+    catch (err) { console.error("Delete error:", err); showToast("Could not delete."); }
   };
 
   const handleResumeUpload = (file) => {
     if (!file) return;
-    const maxSize = 4.5 * 1024 * 1024; // ~4.5MB for base64 in localStorage
-    if (file.size > maxSize) { showToast("File too large. Max ~4.5MB."); return; }
+    const maxSize = 900 * 1024; // Firestore field cap is 1MB; keep headroom
+    if (file.size > maxSize) { showToast("File too large. Max ~900KB for cloud sync."); return; }
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       const data = reader.result;
-      const now = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/Chicago" });
-      setResumeFile(data);
-      setResumeName(file.name);
-      setResumeDate(now);
+      const now = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
       try {
-        localStorage.setItem("finance-resume-data", data);
-        localStorage.setItem("finance-resume-meta", JSON.stringify({ name: file.name, date: now }));
-      } catch { showToast("Storage full — could not save resume."); }
-      showToast("Resume uploaded!");
+        await setDoc(settingsDoc, { name: file.name, date: now, data });
+        showToast("Resume uploaded!");
+      } catch (err) { console.error(err); showToast("Could not save resume."); }
     };
     reader.readAsDataURL(file);
-  };
-
-  const importFromExcel = (file) => {
-    if (!file) return;
-    import("xlsx").then((XLSX) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        try {
-          const wb = XLSX.read(e.target.result, { type: "array" });
-          const ws = wb.Sheets[wb.SheetNames[0]];
-          const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
-          if (rows.length === 0) { showToast("No data found in file."); return; }
-          const colMap = {
-            "first name": "firstName", "last name": "lastName",
-            "profession": "profession", "email": "email",
-            "company": "company", "linkedin": "linkedin",
-            "phone": "phone", "last contacted": "lastContacted",
-            "responded": "responded", "status": "status", "notes": "notes",
-          };
-          const imported = rows.map((row) => {
-            const contact = { ...emptyContact, id: uid() };
-            Object.entries(row).forEach(([col, val]) => {
-              const key = colMap[col.toLowerCase().trim()];
-              if (!key) return;
-              if (key === "responded") contact[key] = String(val).toLowerCase() === "yes" || val === true;
-              else if (key === "lastContacted" && val) {
-                const parsed = new Date(val);
-                contact[key] = isNaN(parsed) ? "" : parsed.toISOString().slice(0, 10);
-              } else if (key === "status" && STATUS_OPTIONS.includes(val)) contact[key] = val;
-              else contact[key] = String(val);
-            });
-            return contact;
-          }).filter(c => c.firstName.trim() || c.lastName.trim());
-          if (imported.length === 0) { showToast("No valid contacts found."); return; }
-          setContacts(prev => {
-            const existingEmails = new Set(prev.map(c => c.email?.toLowerCase()).filter(Boolean));
-            const newOnes = imported.filter(c => !c.email || !existingEmails.has(c.email.toLowerCase()));
-            showToast(`Imported ${newOnes.length} new contact${newOnes.length !== 1 ? "s" : ""}.`);
-            return [...prev, ...newOnes];
-          });
-        } catch { showToast("Failed to read file."); }
-      };
-      reader.readAsArrayBuffer(file);
-    }).catch(() => showToast("Import failed — run: npm install xlsx"));
-    importInputRef.current.value = "";
   };
 
   const exportToExcel = () => {
@@ -307,7 +243,7 @@ export default function NetworkingTracker() {
     const avgDays = (() => { const arr = contacts.map(c => daysSince(c.lastContacted)).filter(d => d !== null); return arr.length === 0 ? 0 : Math.round(arr.reduce((a, b) => a + b, 0) / arr.length); })();
     const companyMap = {}; contacts.forEach(c => { const co = c.company?.trim() || "Unknown"; if (!companyMap[co]) companyMap[co] = { total: 0, responded: 0 }; companyMap[co].total++; if (c.responded) companyMap[co].responded++; });
     const topCompanies = Object.entries(companyMap).sort((a, b) => b[1].total - a[1].total).slice(0, 8);
-    const monthMap = {}; const now = getTodayCST(); for (let i = 5; i >= 0; i--) { const d = new Date(now.getFullYear(), now.getMonth() - i, 1); const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; monthMap[key] = { label: d.toLocaleDateString("en-US", { month: "short", year: "2-digit" }), outreach: 0, responses: 0 }; }
+    const monthMap = {}; const now = new Date(); for (let i = 5; i >= 0; i--) { const d = new Date(now.getFullYear(), now.getMonth() - i, 1); const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; monthMap[key] = { label: d.toLocaleDateString("en-US", { month: "short", year: "2-digit" }), outreach: 0, responses: 0 }; }
     contacts.forEach(c => { if (c.lastContacted) { const key = c.lastContacted.slice(0, 7); if (monthMap[key]) { monthMap[key].outreach++; if (c.responded) monthMap[key].responses++; } } });
     return { total, reachedOut, responded, noResponse, responseRate, neverContacted, staleCount, avgDays, topCompanies, monthlyData: Object.values(monthMap) };
   }, [contacts]);
@@ -373,8 +309,6 @@ export default function NetworkingTracker() {
             </div>
             <button style={{ fontFamily: sans, fontSize: 13, fontWeight: 600, padding: "10px 22px", borderRadius: 10, border: "none", background: P.forest, color: P.white, cursor: "pointer", display: "flex", alignItems: "center", transition: "all 0.2s" }} onClick={openAdd}><span style={{ fontSize: 18, marginRight: 6 }}>+</span> Add Contact</button>
             <button style={{ fontFamily: sans, fontSize: 12, padding: "10px 16px", borderRadius: 10, border: `1px solid ${P.border}`, background: P.white, color: P.textMd, cursor: "pointer" }} onClick={exportToExcel}>↓ Export</button>
-            <input ref={importInputRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: "none" }} onChange={(e) => { const file = e.target.files?.[0]; if (file) importFromExcel(file); }} />
-            <button style={{ fontFamily: sans, fontSize: 12, padding: "10px 16px", borderRadius: 10, border: `1px solid ${P.border}`, background: P.white, color: P.textMd, cursor: "pointer" }} onClick={() => importInputRef.current?.click()}>↑ Import</button>
           </div>
 
           {filtered.length === 0 ? (
@@ -384,16 +318,16 @@ export default function NetworkingTracker() {
             </div>
           ) : (
             <div style={{ overflowX: "auto", borderRadius: 14, border: `1px solid ${P.border}`, background: P.white, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, tableLayout: "fixed" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                 <thead><tr style={{ background: P.bg2 }}>
-                  {[["firstName","First Name","8%"],["lastName","Last Name","9%"],["profession","Profession","13%"],["email","Email","14%"],["company","Company","12%"]].map(([f,l,w]) => (
-                    <th key={f} style={{ fontFamily: sans, fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase", color: P.textMd, padding: "10px 8px", textAlign: "left", borderBottom: `1px solid ${P.border}`, cursor: "pointer", userSelect: "none", whiteSpace: "nowrap", width: w, overflow: "hidden" }} onClick={() => toggleSort(f)}>{l}<SortIcon field={f} /></th>
+                  {[["firstName","First Name"],["lastName","Last Name"],["profession","Profession"],["email","Email"],["company","Company"]].map(([f,l]) => (
+                    <th key={f} style={{ fontFamily: sans, fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase", color: P.textMd, padding: "14px 14px", textAlign: "left", borderBottom: `1px solid ${P.border}`, cursor: "pointer", userSelect: "none", whiteSpace: "nowrap" }} onClick={() => toggleSort(f)}>{l}<SortIcon field={f} /></th>
                   ))}
-                  <th style={{ fontFamily: sans, fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase", color: P.textMd, padding: "10px 8px", textAlign: "left", borderBottom: `1px solid ${P.border}`, whiteSpace: "nowrap", width: "7%" }}>LinkedIn</th>
-                  <th style={{ fontFamily: sans, fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase", color: P.textMd, padding: "10px 8px", textAlign: "left", borderBottom: `1px solid ${P.border}`, cursor: "pointer", whiteSpace: "nowrap", width: "10%" }} onClick={() => toggleSort("lastContacted")}>Last Contacted <SortIcon field="lastContacted" /></th>
-                  <th style={{ fontFamily: sans, fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase", color: P.textMd, padding: "10px 8px", textAlign: "center", borderBottom: `1px solid ${P.border}`, whiteSpace: "nowrap", width: "7%" }}>Replied</th>
-                  <th style={{ fontFamily: sans, fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase", color: P.textMd, padding: "10px 8px", textAlign: "left", borderBottom: `1px solid ${P.border}`, cursor: "pointer", whiteSpace: "nowrap", width: "9%" }} onClick={() => toggleSort("status")}>Status <SortIcon field="status" /></th>
-                  <th style={{ fontFamily: sans, fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase", color: P.textMd, padding: "10px 8px", textAlign: "center", borderBottom: `1px solid ${P.border}`, whiteSpace: "nowrap", width: "11%" }}>Actions</th>
+                  <th style={{ fontFamily: sans, fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase", color: P.textMd, padding: "14px", textAlign: "left", borderBottom: `1px solid ${P.border}`, whiteSpace: "nowrap" }}>LinkedIn</th>
+                  <th style={{ fontFamily: sans, fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase", color: P.textMd, padding: "14px", textAlign: "left", borderBottom: `1px solid ${P.border}`, cursor: "pointer", whiteSpace: "nowrap" }} onClick={() => toggleSort("lastContacted")}>Last Contacted <SortIcon field="lastContacted" /></th>
+                  <th style={{ fontFamily: sans, fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase", color: P.textMd, padding: "14px", textAlign: "center", borderBottom: `1px solid ${P.border}`, whiteSpace: "nowrap" }}>Replied</th>
+                  <th style={{ fontFamily: sans, fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase", color: P.textMd, padding: "14px", textAlign: "left", borderBottom: `1px solid ${P.border}`, cursor: "pointer", whiteSpace: "nowrap" }} onClick={() => toggleSort("status")}>Status <SortIcon field="status" /></th>
+                  <th style={{ fontFamily: sans, fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase", color: P.textMd, padding: "14px", textAlign: "center", borderBottom: `1px solid ${P.border}`, whiteSpace: "nowrap" }}>Actions</th>
                 </tr></thead>
                 <tbody>
                   {filtered.map((c, i) => {
@@ -403,7 +337,7 @@ export default function NetworkingTracker() {
                     const rowBg = isStale ? "rgba(220,38,38,0.08)" : i % 2 === 0 ? "#ffffff" : "#e2e2e2";
                     const staleBorder = isStale ? { borderLeft: `3px solid ${P.danger}` } : {};
                     const staleTxt = isStale ? { color: "#991b1b" } : {};
-                    const tdBase = { padding: "10px 8px", fontFamily: sans, fontSize: 13, color: P.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" };
+                    const tdBase = { padding: "12px 14px", fontFamily: sans, fontSize: 13, color: P.text, whiteSpace: "nowrap", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis" };
                     return (
                       <tr key={c.id} style={{ background: rowBg, borderBottom: `1px solid ${P.border}`, ...staleBorder, animation: "fadeIn 0.35s ease both", animationDelay: `${i * 25}ms`, transition: "background 0.15s" }}>
                         <td style={{ ...tdBase, ...staleTxt }}>{c.firstName}</td>
@@ -626,10 +560,12 @@ export default function NetworkingTracker() {
                       border: `1px solid ${P.border}`, background: P.white, color: P.forest, cursor: "pointer",
                     }}>{showPreview ? "Hide Preview" : "Preview"}</button>
                   )}
-                  <button onClick={() => {
-                    setResumeFile(null); setResumeName(""); setResumeDate(""); setShowPreview(false);
-                    localStorage.removeItem("finance-resume-data"); localStorage.removeItem("finance-resume-meta");
-                    showToast("Resume removed.");
+                  <button onClick={async () => {
+                    try {
+                      await deleteDoc(settingsDoc);
+                      setShowPreview(false);
+                      showToast("Resume removed.");
+                    } catch (err) { console.error(err); showToast("Could not remove resume."); }
                   }} style={{
                     fontFamily: sans, fontSize: 12, fontWeight: 600, padding: "7px 14px", borderRadius: 8,
                     border: `1px solid ${P.border}`, background: P.white, color: P.danger, cursor: "pointer",
@@ -654,41 +590,8 @@ export default function NetworkingTracker() {
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 20 }} onClick={() => setShowForm(false)}>
           <div ref={formRef} style={{ background: "#bc9e82", border: `1px solid ${P.border}`, borderRadius: 18, padding: "32px 28px", maxWidth: 600, width: "100%", animation: "fadeIn 0.3s ease", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.12)" }} onClick={(e) => e.stopPropagation()}>
             <h2 style={{ fontFamily: serif, fontSize: 22, fontWeight: 400, color: P.forest, margin: "0 0 24px" }}>{editing ? "Edit Contact" : "New Contact"}</h2>
-            {(() => {
-              const isDuplicateName = !editing && form.firstName.trim() && form.lastName.trim() &&
-                contacts.some(c => c.firstName.trim().toLowerCase() === form.firstName.trim().toLowerCase() && c.lastName.trim().toLowerCase() === form.lastName.trim().toLowerCase());
-              return (
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px 14px" }}>
-              {[["firstName","First Name *","text","Jane"],["lastName","Last Name *","text","Doe"]].map(([k,l,t,p]) => (
-                <label key={k} style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                  <span style={{ fontFamily: sans, fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase", color: P.textMd }}>{l}</span>
-                  <input type={t} style={{ fontFamily: sans, fontSize: 13, padding: "10px 12px", borderRadius: 10, border: `1px solid ${isDuplicateName ? P.danger : P.border}`, background: P.bg, color: P.text, outline: "none", width: "100%" }} placeholder={p} value={form[k]} onChange={(e) => setForm((f) => ({ ...f, [k]: e.target.value }))} />
-                </label>
-              ))}
-              {isDuplicateName && (
-                <div style={{ gridColumn: "1 / -1", display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", borderRadius: 10, background: "#fef2f2", border: `1px solid ${P.danger}` }}>
-                  <span style={{ fontSize: 16 }}>⚠️</span>
-                  <span style={{ fontFamily: sans, fontSize: 12, fontWeight: 600, color: P.danger }}>A contact with this name already exists — double-check you haven't already emailed this person.</span>
-                </div>
-              )}
-              {[["profession","Profession","text","Investment Banking Analyst"],["email","Email","email","jane.doe@firm.com"],["company","Company","text","Goldman Sachs"]].map(([k,l,t,p]) => (
-                <label key={k} style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                  <span style={{ fontFamily: sans, fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase", color: P.textMd }}>{l}</span>
-                  <input type={t} style={{ fontFamily: sans, fontSize: 13, padding: "10px 12px", borderRadius: 10, border: `1px solid ${P.border}`, background: P.bg, color: P.text, outline: "none", width: "100%" }} placeholder={p} value={form[k]} onChange={(e) => setForm((f) => ({ ...f, [k]: e.target.value }))} />
-                </label>
-              ))}
-              <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                <span style={{ fontFamily: sans, fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase", color: P.textMd }}>Location</span>
-                <select style={{ fontFamily: sans, fontSize: 13, padding: "10px 12px", borderRadius: 10, border: `1px solid ${P.border}`, background: P.bg, color: P.text, outline: "none", width: "100%" }} value={locationIsCustom ? "Other" : (form.location || "")} onChange={(e) => { if (e.target.value === "Other") { setLocationIsCustom(true); setForm(f => ({ ...f, location: "" })); } else { setLocationIsCustom(false); setForm(f => ({ ...f, location: e.target.value })); } }}>
-                  <option value="">Select city…</option>
-                  {LOCATION_PRESETS.map(loc => <option key={loc} value={loc}>{loc}</option>)}
-                  <option value="Other">Other</option>
-                </select>
-                {locationIsCustom && (
-                  <input type="text" style={{ fontFamily: sans, fontSize: 13, padding: "10px 12px", borderRadius: 10, border: `1px solid ${P.border}`, background: P.bg, color: P.text, outline: "none", width: "100%", marginTop: 6 }} placeholder="Enter city…" value={form.location} onChange={(e) => setForm(f => ({ ...f, location: e.target.value }))} />
-                )}
-              </label>
-              {[["linkedin","LinkedIn URL","url","linkedin.com/in/janedoe"],["phone","Phone (optional)","tel","(555) 123-4567"]].map(([k,l,t,p]) => (
+              {[["firstName","First Name *","text","Jane"],["lastName","Last Name *","text","Doe"],["profession","Profession","text","Investment Analyst"],["email","Email","email","jane.doe@firm.com"],["company","Company","text","Goldman Sachs"],["linkedin","LinkedIn URL","url","linkedin.com/in/janedoe"],["phone","Phone (optional)","tel","(555) 123-4567"]].map(([k,l,t,p]) => (
                 <label key={k} style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                   <span style={{ fontFamily: sans, fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase", color: P.textMd }}>{l}</span>
                   <input type={t} style={{ fontFamily: sans, fontSize: 13, padding: "10px 12px", borderRadius: 10, border: `1px solid ${P.border}`, background: P.bg, color: P.text, outline: "none", width: "100%" }} placeholder={p} value={form[k]} onChange={(e) => setForm((f) => ({ ...f, [k]: e.target.value }))} />
@@ -711,8 +614,6 @@ export default function NetworkingTracker() {
               </label>
               <label style={{ display: "flex", flexDirection: "column", gap: 5, gridColumn: "1 / -1" }}><span style={{ fontFamily: sans, fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase", color: P.textMd }}>Notes</span><textarea style={{ fontFamily: sans, fontSize: 13, padding: "10px 12px", borderRadius: 10, border: `1px solid ${P.border}`, background: P.bg, color: P.text, outline: "none", width: "100%", minHeight: 60, resize: "vertical" }} placeholder="Met at JPM conference, interested in PE roles…" value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} /></label>
             </div>
-          );
-        })()}
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 24 }}>
               <button style={{ fontFamily: sans, fontSize: 13, padding: "10px 18px", borderRadius: 10, border: `1px solid ${P.border}`, background: P.white, color: P.textMd, cursor: "pointer" }} onClick={() => setShowForm(false)}>Cancel</button>
               <button style={{ fontFamily: sans, fontSize: 13, fontWeight: 600, padding: "10px 22px", borderRadius: 10, border: "none", background: P.forest, color: P.white, cursor: "pointer" }} onClick={saveContact}>{editing ? "Update Contact" : "Save Contact"}</button>
