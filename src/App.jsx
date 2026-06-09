@@ -226,6 +226,45 @@ export default function NetworkingTracker() {
     }).catch(() => showToast("Export failed — run: npm install xlsx"));
   };
 
+  const importInputRef = useRef(null);
+  const importFromExcel = (file) => {
+    if (!file) return;
+    import("xlsx").then((XLSX) => {
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const data = new Uint8Array(e.target.result);
+          const wb = XLSX.read(data, { type: "array" });
+          const ws = wb.Sheets[wb.SheetNames[0]];
+          const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+          if (rows.length < 2) { showToast("File has no data."); return; }
+          const headers = rows[0].map(h => String(h).toLowerCase().trim());
+          const keyMap = { "first name": "firstName", "firstname": "firstName", "last name": "lastName", "lastname": "lastName", "profession": "profession", "role": "profession", "email": "email", "company": "company", "linkedin": "linkedin", "linkedin url": "linkedin", "phone": "phone", "phone number": "phone", "last contacted": "lastContacted", "lastcontacted": "lastContacted", "responded": "responded", "replied": "responded", "status": "status", "notes": "notes" };
+          let added = 0;
+          for (let i = 1; i < rows.length; i++) {
+            const row = rows[i];
+            if (!row || row.every(v => !v)) continue;
+            const obj = { ...emptyContact };
+            headers.forEach((h, idx) => {
+              const key = keyMap[h];
+              if (!key) return;
+              let val = row[idx];
+              if (key === "responded") val = String(val).toLowerCase() === "yes" || val === true || String(val).toLowerCase() === "true";
+              obj[key] = val ?? "";
+            });
+            if (!obj.firstName?.toString().trim() && !obj.lastName?.toString().trim()) continue;
+            const id = uid();
+            obj.id = id;
+            await setDoc(doc(contactsCol, id), obj);
+            added++;
+          }
+          showToast(`Imported ${added} contact${added === 1 ? "" : "s"}!`);
+        } catch (err) { console.error("Import error:", err); showToast("Could not read file."); }
+      };
+      reader.readAsArrayBuffer(file);
+    }).catch(() => showToast("Import failed — run: npm install xlsx"));
+  };
+
   const filtered = contacts.filter((c) => { if (filterStatus !== "All" && c.status !== filterStatus) return false; if (!search) return true; const q = search.toLowerCase(); return c.firstName.toLowerCase().includes(q) || c.lastName.toLowerCase().includes(q) || c.company.toLowerCase().includes(q) || c.profession.toLowerCase().includes(q) || c.email.toLowerCase().includes(q); }).sort((a, b) => { if (!sortField) return 0; if (sortField === "lastContacted") { const da = a.lastContacted ? new Date(a.lastContacted).getTime() : 0; const db = b.lastContacted ? new Date(b.lastContacted).getTime() : 0; return sortDir === "asc" ? da - db : db - da; } const va = (a[sortField] || "").toLowerCase(); const vb = (b[sortField] || "").toLowerCase(); return sortDir === "asc" ? va.localeCompare(vb) : vb.localeCompare(va); });
   if (!sortField) filtered.reverse();
   const statusCounts = STATUS_OPTIONS.reduce((acc, s) => { acc[s] = contacts.filter((c) => c.status === s).length; return acc; }, {});
@@ -254,28 +293,28 @@ export default function NetworkingTracker() {
     <div style={{ fontFamily: sans, background: P.bg, color: P.text, minHeight: "100vh", padding: "0 0 60px" }}>
 
       {/* ─── Top Bar (UTD green) ─── */}
-      <div style={{ background: P.forest, padding: "14px 32px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <div style={{ background: "rgba(255,255,255,0.12)", borderRadius: 8, padding: "5px 10px", display: "flex", alignItems: "center" }}>
+      <div className="nx-topbar" style={{ background: P.forest, padding: "14px 32px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div className="nx-logoblock" style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div className="nx-utdbox" style={{ background: "rgba(255,255,255,0.12)", borderRadius: 8, padding: "5px 10px", display: "flex", alignItems: "center" }}>
             <span style={{ fontFamily: sans, fontSize: 15, fontWeight: 800, color: P.orange, letterSpacing: 1 }}>UTD</span>
           </div>
-          <div>
-            <h1 style={{ fontFamily: serif, fontSize: 22, fontWeight: 400, color: P.white, margin: 0, letterSpacing: 0.5 }}>Rohit Modi</h1>
-            <p style={{ fontFamily: sans, fontSize: 11, color: "rgba(255,255,255,0.55)", margin: 0, letterSpacing: 0.5 }}>Path to High Finance · University of Texas at Dallas</p>
+          <div style={{ flex: 1 }}>
+            <h1 className="nx-title" style={{ fontFamily: serif, fontSize: 22, fontWeight: 400, color: P.white, margin: 0, letterSpacing: 0.5 }}>Rohit Modi</h1>
+            <p className="nx-subtitle" style={{ fontFamily: sans, fontSize: 11, color: "rgba(255,255,255,0.55)", margin: 0, letterSpacing: 0.5 }}>Path to High Finance · University of Texas at Dallas</p>
           </div>
         </div>
         <div style={{ textAlign: "right" }}>
-          <div style={{ fontFamily: serif, fontSize: 32, color: P.orange, lineHeight: 1 }}>{contacts.length}</div>
-          <div style={{ fontFamily: sans, fontSize: 10, fontWeight: 600, letterSpacing: 1.5, color: "rgba(255,255,255,0.4)", textTransform: "uppercase" }}>contacts</div>
+          <div className="nx-count" style={{ fontFamily: serif, fontSize: 32, color: P.orange, lineHeight: 1 }}>{contacts.length}</div>
+          <div className="nx-countlabel" style={{ fontFamily: sans, fontSize: 10, fontWeight: 600, letterSpacing: 1.5, color: "rgba(255,255,255,0.4)", textTransform: "uppercase" }}>contacts</div>
         </div>
       </div>
 
-      <div style={{ padding: "0 32px", maxWidth: 1400, margin: "0 auto" }}>
+      <div className="nx-content" style={{ padding: "0 32px", maxWidth: 1400, margin: "0 auto" }}>
 
         {/* ─── Tab Bar ─── */}
         <div style={{ display: "flex", gap: 0, borderBottom: `2px solid ${P.border}`, marginBottom: 24, marginTop: 4 }}>
-          {[["contacts","Contacts"],["dashboard","Dashboard"],["misc","Miscellaneous"]].map(([key,label]) => (
-            <button key={key} onClick={() => setActiveTab(key)} style={{
+          {[["contacts","Contacts"],["dashboard","Dashboard"]].map(([key,label]) => (
+            <button key={key} className="nx-tabbtn" onClick={() => setActiveTab(key)} style={{
               fontFamily: sans, fontSize: 13, fontWeight: 600, letterSpacing: 0.3, padding: "14px 24px", cursor: "pointer",
               border: "none", borderBottom: activeTab === key ? `2px solid ${P.forest}` : "2px solid transparent",
               color: activeTab === key ? P.forest : P.textLt, background: "transparent", marginBottom: -2,
@@ -289,7 +328,7 @@ export default function NetworkingTracker() {
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 18 }}>
             {["All", ...STATUS_OPTIONS].map((x) => {
               const active = filterStatus === x; const sc = SC[x];
-              return (<button key={x} onClick={() => setFilterStatus(x)} style={{
+              return (<button key={x} className="nx-statuspill" onClick={() => setFilterStatus(x)} style={{
                 fontFamily: sans, fontSize: 12, fontWeight: 500, padding: "7px 16px", borderRadius: 20,
                 border: `1px solid ${active ? (sc ? sc.dot : P.forest) : P.border}`, cursor: "pointer",
                 background: active ? (sc ? sc.bg : P.forest) : P.white,
@@ -305,10 +344,12 @@ export default function NetworkingTracker() {
           <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
             <div style={{ position: "relative", flex: 1, minWidth: 200 }}>
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ position: "absolute", left: 12, top: 11 }}><circle cx="7" cy="7" r="5" stroke={P.textLt} strokeWidth="1.5" /><line x1="11" y1="11" x2="14" y2="14" stroke={P.textLt} strokeWidth="1.5" strokeLinecap="round" /></svg>
-              <input style={{ fontFamily: sans, fontSize: 13, width: "100%", padding: "10px 12px 10px 36px", borderRadius: 10, border: `1px solid ${P.border}`, background: P.white, color: P.text, outline: "none" }} placeholder="Search by name, company, profession…" value={search} onChange={(e) => setSearch(e.target.value)} />
+              <input className="nx-search" style={{ fontFamily: sans, fontSize: 13, width: "100%", padding: "10px 12px 10px 36px", borderRadius: 10, border: `1px solid ${P.border}`, background: P.white, color: P.text, outline: "none" }} placeholder="Search by name, company, profession…" value={search} onChange={(e) => setSearch(e.target.value)} />
             </div>
-            <button style={{ fontFamily: sans, fontSize: 13, fontWeight: 600, padding: "10px 22px", borderRadius: 10, border: "none", background: P.forest, color: P.white, cursor: "pointer", display: "flex", alignItems: "center", transition: "all 0.2s" }} onClick={openAdd}><span style={{ fontSize: 18, marginRight: 6 }}>+</span> Add Contact</button>
-            <button style={{ fontFamily: sans, fontSize: 12, padding: "10px 16px", borderRadius: 10, border: `1px solid ${P.border}`, background: P.white, color: P.textMd, cursor: "pointer" }} onClick={exportToExcel}>↓ Export</button>
+            <button className="nx-addbtn" style={{ fontFamily: sans, fontSize: 13, fontWeight: 600, padding: "10px 22px", borderRadius: 10, border: "none", background: P.forest, color: P.white, cursor: "pointer", display: "flex", alignItems: "center", transition: "all 0.2s" }} onClick={openAdd}><span style={{ fontSize: 18, marginRight: 6 }}>+</span> Add Contact</button>
+            <button className="nx-export" style={{ fontFamily: sans, fontSize: 12, padding: "10px 16px", borderRadius: 10, border: `1px solid ${P.border}`, background: P.white, color: P.textMd, cursor: "pointer" }} onClick={exportToExcel}>↓ Export</button>
+            <input ref={importInputRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) importFromExcel(f); e.target.value = ""; }} />
+            <button className="nx-export" style={{ fontFamily: sans, fontSize: 12, padding: "10px 16px", borderRadius: 10, border: `1px solid ${P.border}`, background: P.white, color: P.textMd, cursor: "pointer" }} onClick={() => importInputRef.current?.click()}>↑ Import</button>
           </div>
 
           {filtered.length === 0 ? (
@@ -317,8 +358,8 @@ export default function NetworkingTracker() {
               <p style={{ color: P.textMd, marginTop: 16, fontSize: 14 }}>{contacts.length === 0 ? "No contacts yet — add your first one above." : "No contacts match your filters."}</p>
             </div>
           ) : (
-            <div style={{ overflowX: "auto", borderRadius: 14, border: `1px solid ${P.border}`, background: P.white, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <div className="nx-tablewrap" style={{ overflowX: "auto", borderRadius: 14, border: `1px solid ${P.border}`, background: P.white, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+              <table className="nx-table" style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                 <thead><tr style={{ background: P.bg2 }}>
                   {[["firstName","First Name"],["lastName","Last Name"],["profession","Profession"],["email","Email"],["company","Company"]].map(([f,l]) => (
                     <th key={f} style={{ fontFamily: sans, fontSize: 11, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase", color: P.textMd, padding: "14px 14px", textAlign: "left", borderBottom: `1px solid ${P.border}`, cursor: "pointer", userSelect: "none", whiteSpace: "nowrap" }} onClick={() => toggleSort(f)}>{l}<SortIcon field={f} /></th>
@@ -475,113 +516,6 @@ export default function NetworkingTracker() {
             </>)}
           </div>
         )}
-        {/* ═══ MISCELLANEOUS TAB ═══ */}
-        {activeTab === "misc" && (
-          <div style={{ maxWidth: 700 }}>
-            <h2 style={{ fontFamily: serif, fontSize: 26, fontWeight: 400, color: P.forest, margin: "0 0 8px" }}>Quick Links & Tools</h2>
-            <p style={{ fontFamily: sans, fontSize: 13, color: P.textMd, marginBottom: 28 }}>Your essentials in one place.</p>
-
-            {/* Quick Links Row */}
-            <div style={{ display: "flex", gap: 14, marginBottom: 28, flexWrap: "wrap" }}>
-              {/* Email */}
-              <a href="https://mail.google.com/mail/u/2/#inbox" target="_blank" rel="noreferrer" style={{
-                background: P.white, border: `1px solid ${P.border}`, borderRadius: 14, padding: "20px 24px",
-                display: "flex", alignItems: "center", gap: 14, textDecoration: "none", flex: "1 1 200px",
-                boxShadow: "0 1px 3px rgba(0,0,0,0.04)", transition: "all 0.2s", cursor: "pointer",
-              }}>
-                <div style={{ width: 44, height: 44, borderRadius: 12, background: "#e0f2fe", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0369a1" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 4L12 13 2 4"/></svg>
-                </div>
-                <div>
-                  <div style={{ fontFamily: sans, fontSize: 14, fontWeight: 600, color: P.text }}>Email</div>
-                  <div style={{ fontFamily: sans, fontSize: 11, color: P.textLt }}>Open Gmail</div>
-                </div>
-              </a>
-
-              {/* LinkedIn */}
-              <a href="https://www.linkedin.com/in/rohitjmodi/" target="_blank" rel="noreferrer" style={{
-                background: P.white, border: `1px solid ${P.border}`, borderRadius: 14, padding: "20px 24px",
-                display: "flex", alignItems: "center", gap: 14, textDecoration: "none", flex: "1 1 200px",
-                boxShadow: "0 1px 3px rgba(0,0,0,0.04)", transition: "all 0.2s", cursor: "pointer",
-              }}>
-                <div style={{ width: 44, height: 44, borderRadius: 12, background: "#e0f2fe", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="#0a66c2"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
-                </div>
-                <div>
-                  <div style={{ fontFamily: sans, fontSize: 14, fontWeight: 600, color: P.text }}>LinkedIn</div>
-                  <div style={{ fontFamily: sans, fontSize: 11, color: P.textLt }}>View profile</div>
-                </div>
-              </a>
-            </div>
-
-            {/* Resume Section */}
-            <h3 style={{ fontFamily: sans, fontSize: 13, fontWeight: 600, letterSpacing: 0.8, textTransform: "uppercase", color: P.textLt, marginBottom: 14 }}>Resume</h3>
-
-            {/* Upload area */}
-            <div
-              onClick={() => resumeInputRef.current?.click()}
-              onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
-              onDrop={(e) => { e.preventDefault(); e.stopPropagation(); const file = e.dataTransfer.files?.[0]; if (file) handleResumeUpload(file); }}
-              style={{
-                background: P.white, border: `2px dashed ${resumeFile ? P.forest : P.border}`, borderRadius: 14,
-                padding: "36px 32px", textAlign: "center", cursor: "pointer",
-                transition: "all 0.2s", marginBottom: 20,
-              }}
-            >
-              <input ref={resumeInputRef} type="file" accept=".pdf,.doc,.docx" style={{ display: "none" }}
-                onChange={(e) => { const file = e.target.files?.[0]; if (file) handleResumeUpload(file); }} />
-              <div style={{ fontSize: 36, marginBottom: 10 }}>📄</div>
-              <div style={{ fontFamily: sans, fontSize: 14, fontWeight: 600, color: P.forest, marginBottom: 4 }}>
-                {resumeFile ? "Click to replace your resume" : "Click or drag & drop to upload"}
-              </div>
-              <div style={{ fontFamily: sans, fontSize: 12, color: P.textLt }}>PDF, DOC, DOCX</div>
-            </div>
-
-            {/* Current resume card */}
-            {resumeFile && (
-              <div style={{
-                background: P.white, border: `1px solid ${P.border}`, borderRadius: 14,
-                padding: "16px 20px", display: "flex", alignItems: "center", gap: 14,
-                boxShadow: "0 1px 3px rgba(0,0,0,0.04)", marginBottom: 16,
-              }}>
-                <div style={{ width: 42, height: 42, borderRadius: 10, background: "#f0fdf4", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>📄</div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontFamily: sans, fontSize: 14, fontWeight: 600, color: P.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{resumeName}</div>
-                  <div style={{ fontFamily: sans, fontSize: 11, color: P.textLt, marginTop: 2 }}>Uploaded {resumeDate}</div>
-                </div>
-                <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-                  <a href={resumeFile} target="_blank" rel="noreferrer" style={{
-                    fontFamily: sans, fontSize: 12, fontWeight: 600, padding: "7px 14px", borderRadius: 8,
-                    background: P.forest, color: P.white, textDecoration: "none", cursor: "pointer",
-                  }}>Open ↗</a>
-                  {resumeName.toLowerCase().endsWith(".pdf") && (
-                    <button onClick={() => setShowPreview(!showPreview)} style={{
-                      fontFamily: sans, fontSize: 12, fontWeight: 600, padding: "7px 14px", borderRadius: 8,
-                      border: `1px solid ${P.border}`, background: P.white, color: P.forest, cursor: "pointer",
-                    }}>{showPreview ? "Hide Preview" : "Preview"}</button>
-                  )}
-                  <button onClick={async () => {
-                    try {
-                      await deleteDoc(settingsDoc);
-                      setShowPreview(false);
-                      showToast("Resume removed.");
-                    } catch (err) { console.error(err); showToast("Could not remove resume."); }
-                  }} style={{
-                    fontFamily: sans, fontSize: 12, fontWeight: 600, padding: "7px 14px", borderRadius: 8,
-                    border: `1px solid ${P.border}`, background: P.white, color: P.danger, cursor: "pointer",
-                  }}>Remove</button>
-                </div>
-              </div>
-            )}
-
-            {/* PDF Preview (only when toggled) */}
-            {resumeFile && showPreview && resumeName.toLowerCase().endsWith(".pdf") && (
-              <div style={{ background: P.white, border: `1px solid ${P.border}`, borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
-                <iframe src={resumeFile} style={{ width: "100%", height: 600, border: "none" }} title="Resume Preview" />
-              </div>
-            )}
-          </div>
-        )}
 
       </div>
 
@@ -633,6 +567,29 @@ export default function NetworkingTracker() {
         ::-webkit-scrollbar { width:6px; height:6px }
         ::-webkit-scrollbar-track { background:${P.bg} }
         ::-webkit-scrollbar-thumb { background:${P.border}; border-radius:3px }
+
+        /* Mobile responsive */
+        @media (max-width: 640px) {
+          .nx-topbar { padding: 12px 16px !important; flex-direction: column !important; align-items: flex-start !important; gap: 10px; }
+          .nx-logoblock { width: 100%; display: flex; justify-content: space-between; align-items: center; }
+          .nx-title { font-size: 18px !important; }
+          .nx-subtitle { font-size: 10px !important; }
+          .nx-utdbox { padding: 4px 8px !important; }
+          .nx-utdbox span { font-size: 12px !important; }
+          .nx-count { font-size: 24px !important; }
+          .nx-countlabel { font-size: 9px !important; }
+          .nx-content { padding: 0 14px !important; }
+          .nx-tabbtn { padding: 10px 14px !important; font-size: 12px !important; }
+          .nx-statuspill { font-size: 11px !important; padding: 6px 12px !important; }
+          .nx-search { font-size: 16px !important; }
+          .nx-addbtn { font-size: 12px !important; padding: 9px 16px !important; }
+          .nx-export { font-size: 11px !important; padding: 9px 12px !important; }
+          .nx-tablewrap { border-radius: 10px !important; }
+          .nx-table th, .nx-table td { padding: 8px 8px !important; font-size: 11px !important; }
+          .nx-table th { font-size: 9px !important; }
+          .nx-statustag { font-size: 10px !important; padding: 3px 7px !important; }
+          .nx-replytag { font-size: 10px !important; padding: 2px 7px !important; }
+        }
       `}</style>
     </div>
   );
