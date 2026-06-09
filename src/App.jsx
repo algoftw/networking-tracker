@@ -229,6 +229,10 @@ export default function NetworkingTracker() {
   const importInputRef = useRef(null);
   const importFromExcel = (file) => {
     if (!file) return;
+    if (contacts.length > 0) {
+      const ok = window.confirm(`This will replace all ${contacts.length} existing contact${contacts.length === 1 ? "" : "s"}. Continue?`);
+      if (!ok) return;
+    }
     import("xlsx").then((XLSX) => {
       const reader = new FileReader();
       reader.onload = async (e) => {
@@ -240,6 +244,10 @@ export default function NetworkingTracker() {
           if (rows.length < 2) { showToast("File has no data."); return; }
           const headers = rows[0].map(h => String(h).toLowerCase().trim());
           const keyMap = { "first name": "firstName", "firstname": "firstName", "last name": "lastName", "lastname": "lastName", "profession": "profession", "role": "profession", "email": "email", "company": "company", "linkedin": "linkedin", "linkedin url": "linkedin", "phone": "phone", "phone number": "phone", "last contacted": "lastContacted", "lastcontacted": "lastContacted", "responded": "responded", "replied": "responded", "status": "status", "notes": "notes" };
+
+          // Delete all existing contacts
+          await Promise.all(contacts.map(c => deleteDoc(doc(contactsCol, c.id))));
+
           let added = 0;
           for (let i = 1; i < rows.length; i++) {
             const row = rows[i];
@@ -258,7 +266,7 @@ export default function NetworkingTracker() {
             await setDoc(doc(contactsCol, id), obj);
             added++;
           }
-          showToast(`Imported ${added} contact${added === 1 ? "" : "s"}!`);
+          showToast(`Replaced with ${added} contact${added === 1 ? "" : "s"}!`);
         } catch (err) { console.error("Import error:", err); showToast("Could not read file."); }
       };
       reader.readAsArrayBuffer(file);
