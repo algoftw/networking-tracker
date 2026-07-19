@@ -175,7 +175,7 @@ export default function NetworkingTracker() {
     const body = generateEmailTemplate(contact);
     const subject = `UT Dallas Senior - Interested in ${contact.company || "[Company]"} IB`;
     const to = contact.email || "";
-    const url = `https://mail.google.com/mail/u/2/?view=cm&to=${encodeURIComponent(to)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    const url = `https://mail.google.com/mail/u/2/?authuser=rohitmodi884@gmail.com&view=cm&to=${encodeURIComponent(to)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     window.open(url, "_blank");
   };
 
